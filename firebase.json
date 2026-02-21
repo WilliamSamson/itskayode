@@ -1,0 +1,30 @@
+{
+  "hosting": [
+    {
+      "site": "itskayode",
+      "public": "out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true
+    },
+    {
+      "site": "xritskayode",
+      "public": "out",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "redirects": [
+        {
+          "source": "**",
+          "destination": "https://itskayode.web.app",
+          "type": 301
+        }
+      ]
+    }
+  ]
+}

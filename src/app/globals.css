@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 0 0 0;
+  --surface: 10 10 10;
+  --text: 255 255 255;
+  --primary: 220 38 38;
+  /* Slightly brighter red for pop */
+  --border: 255 255 255;
+  color: rgb(var(--text));
+}
+
+@keyframes stardust-twinkle {
+
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: scale(1.45);
+  }
+}
+
+.stardust-star {
+  animation-name: stardust-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+body[data-work-modal-open="1"] [data-site-navbar="1"] {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+}
+
+@layer components {
+  .surface {
+    @apply rounded-lg border border-border/10 bg-surface;
+  }
+
+  .focus-ring {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

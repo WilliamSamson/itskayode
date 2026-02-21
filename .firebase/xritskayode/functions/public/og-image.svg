@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Kayode Olalere Portfolio">
+  <rect width="1200" height="630" fill="#070707"/>
+  <rect x="72" y="72" width="1056" height="486" fill="#0e0e10" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="2"/>
+  <rect x="72" y="72" width="18" height="486" fill="#540E10"/>
+  <rect x="1110" y="72" width="18" height="486" fill="#540E10"/>
+  <text x="140" y="290" fill="#FFFFFF" font-family="'Segoe UI', sans-serif" font-size="64" font-weight="700">Kayode Olalere</text>
+  <text x="140" y="355" fill="#FFFFFF" fill-opacity="0.78" font-family="'Segoe UI', sans-serif" font-size="34">Builder | Engineer | Founder</text>
+  <text x="140" y="415" fill="#FFFFFF" fill-opacity="0.6" font-family="'Courier New', monospace" font-size="24">kayode-portfolio</text>
+</svg>
