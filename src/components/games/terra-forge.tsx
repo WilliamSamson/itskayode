@@ -175,7 +175,7 @@ const createMineral = (id: number): Mineral => {
 
 // --- Upgrade System Types ---
 
-type UpgradeType = "SPEED" | "VISION" | "EFFICIENCY" | "TURRET" | "LASER" | "ARMOR" | "CHASSIS";
+type UpgradeType = "SPEED" | "VISION" | "EFFICIENCY" | "TURRET" | "LASER" | "ARMOR" | "EXTRUSION";
 
 interface Upgrade {
     id: string;
@@ -184,6 +184,8 @@ interface Upgrade {
     description: string;
     rarity: "common" | "rare" | "legendary";
     value: number; // Magnitude of effect (e.g. 0.1 for +10%)
+    shapeW?: number; // Only used for EXTRUSION and CORE_CHASSIS
+    shapeH?: number; // Only used for EXTRUSION and CORE_CHASSIS
 }
 
 type ModuleLevels = Record<UpgradeType, number>;
@@ -202,6 +204,8 @@ interface PlacedModule {
     gridX: number; // 0 to gridSize-1
     gridY: number; // 0 to gridSize-1
     rotation: number; // 0, 90, 180, 270
+    shapeW: number; // 1, 2, 4 etc (Base shape width before rotation)
+    shapeH: number; // 1, 2, 3 etc (Base shape height before rotation)
 }
 
 interface RoverStats {
@@ -249,7 +253,7 @@ const AVAILABLE_UPGRADES: Upgrade[] = [
     { id: "wpn-l2", type: "LASER", name: "Prism Emitter", description: "Split-beam prism lattice with higher throughput and pierce.", rarity: "legendary", value: 1.35 },
     { id: "arm-1", type: "ARMOR", name: "Ablative Plating", description: "+40 Max Hull Integrity", rarity: "common", value: 40 },
     { id: "arm-2", type: "ARMOR", name: "Titanium Chassis", description: "+100 Max Hull Integrity", rarity: "rare", value: 100 },
-    { id: "chs-1", type: "CHASSIS", name: "Strut Expander", description: "Increases rover physical dimensions and collision mass.", rarity: "common", value: 1 },
+    { id: "chs-1", type: "EXTRUSION", name: "Strut Expander", description: "Increases rover physical dimensions and connection points.", rarity: "common", value: 1, shapeW: 1, shapeH: 2 },
 ];
 
 const UPGRADE_TYPE_META: Record<UpgradeType, { code: string; label: string; frame: string; glow: string }> = {
@@ -289,8 +293,8 @@ const UPGRADE_TYPE_META: Record<UpgradeType, { code: string; label: string; fram
         frame: "border-emerald-500/60 text-emerald-400",
         glow: "from-emerald-500/18",
     },
-    CHASSIS: {
-        code: "BDY",
+    EXTRUSION: {
+        code: "EXT",
         label: "Superstructure",
         frame: "border-zinc-500/60 text-zinc-400",
         glow: "from-zinc-500/18",
@@ -325,7 +329,7 @@ const createModuleLevels = (): ModuleLevels => ({
     TURRET: 0,
     LASER: 0,
     ARMOR: 0,
-    CHASSIS: 0,
+    EXTRUSION: 0,
 });
 
 const getModuleLevels = (upgrades: Upgrade[]): ModuleLevels => {
@@ -334,15 +338,6 @@ const getModuleLevels = (upgrades: Upgrade[]): ModuleLevels => {
         levels[upgrade.type] += 1;
     }
     return levels;
-};
-
-const getConstructionGridSize = (totalModuleLevels: number, chassisLevels: number) => {
-    const minimum = 5;
-    const densityTarget = 0.34;
-    const requiredCells = Math.ceil(Math.max(totalModuleLevels, 1) / densityTarget);
-    const moduleDrivenSize = Math.ceil(Math.sqrt(requiredCells));
-    const growthFromChassis = Math.floor(chassisLevels / 2);
-    return clamp(Math.max(minimum, moduleDrivenSize + growthFromChassis), 5, 9);
 };
 
 const getWeaponProfile = (levels: ModuleLevels, liveStats: RoverStats): WeaponProfile => {
@@ -483,7 +478,8 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
     const [pendingModule, setPendingModule] = useState<Upgrade | null>(null);
     const [pendingRotation, setPendingRotation] = useState(0); // 0 to 3 (* 90 deg)
     const [placedModules, setPlacedModules] = useState<PlacedModule[]>([
-        { id: "mod-start-turret", upgradeId: "start-turret", type: "TURRET", gridX: 2, gridY: 2, rotation: 0 }
+        { id: "mod-core", upgradeId: "core-chassis", type: "EXTRUSION", gridX: 5, gridY: 6, rotation: 0, shapeW: 4, shapeH: 3 },
+        { id: "mod-start-turret", upgradeId: "start-turret", type: "TURRET", gridX: 6, gridY: 7, rotation: 0, shapeW: 1, shapeH: 1 }
     ]);
     const [selectedWeaponModuleId, setSelectedWeaponModuleId] = useState<string | null>(null);
 
@@ -658,19 +654,92 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
         ].slice(0, 4));
     };
 
+    const checkPlacementValidity = (gridX: number, gridY: number, rotation: number, upgrade: Upgrade) => {
+        const isRotated = rotation % 180 !== 0;
+        const pendingW = isRotated ? (upgrade.shapeH || 1) : (upgrade.shapeW || 1);
+        const pendingH = isRotated ? (upgrade.shapeW || 1) : (upgrade.shapeH || 1);
+
+        if (gridX < 0 || gridY < 0 || gridX + pendingW > 15 || gridY + pendingH > 15) return false;
+
+        let overlapsExisting = false;
+        let restsOnExtrusionFull = true;
+        let sharesEdgeWithExtrusion = false;
+
+        const isChassisBlock = upgrade.type === "EXTRUSION";
+
+        for (let y = gridY; y < gridY + pendingH; y++) {
+            for (let x = gridX; x < gridX + pendingW; x++) {
+
+                const occupyingModules = placedModules.filter((m) => {
+                    const mw = (m.rotation % 180 !== 0) ? (m.shapeH || 1) : (m.shapeW || 1);
+                    const mh = (m.rotation % 180 !== 0) ? (m.shapeW || 1) : (m.shapeH || 1);
+                    return x >= m.gridX && x < m.gridX + mw && y >= m.gridY && y < m.gridY + mh;
+                });
+
+                const hasExtrusionHere = occupyingModules.some(m => m.type === "EXTRUSION");
+                const hasAttachmentHere = occupyingModules.some(m => m.type !== "EXTRUSION");
+
+                if (isChassisBlock) {
+                    if (occupyingModules.length > 0) overlapsExisting = true;
+
+                    if (!sharesEdgeWithExtrusion) {
+                        const adjacents = [
+                            { ax: x - 1, ay: y }, { ax: x + 1, ay: y },
+                            { ax: x, ay: y - 1 }, { ax: x, ay: y + 1 }
+                        ];
+                        for (const adj of adjacents) {
+                            if (adj.ax >= 0 && adj.ax < 15 && adj.ay >= 0 && adj.ay < 15) {
+                                const hasAdjExtrusion = placedModules.some((m) => {
+                                    if (m.type !== "EXTRUSION") return false;
+                                    const mw = (m.rotation % 180 !== 0) ? (m.shapeH || 1) : (m.shapeW || 1);
+                                    const mh = (m.rotation % 180 !== 0) ? (m.shapeW || 1) : (m.shapeH || 1);
+                                    return adj.ax >= m.gridX && adj.ax < m.gridX + mw && adj.ay >= m.gridY && adj.ay < m.gridY + mh;
+                                });
+                                if (hasAdjExtrusion) sharesEdgeWithExtrusion = true;
+                            }
+                        }
+                    }
+                } else {
+                    if (!hasExtrusionHere) restsOnExtrusionFull = false;
+                    if (hasAttachmentHere) overlapsExisting = true;
+                }
+            }
+        }
+
+        if (overlapsExisting) return false;
+        if (isChassisBlock && !sharesEdgeWithExtrusion) return false;
+        if (!isChassisBlock && !restsOnExtrusionFull) return false;
+
+        return true;
+    };
+
     const confirmPlacement = (gridX: number, gridY: number, rotation: number) => {
         if (!pendingModule) return;
-        if (placedModules.some((mod) => mod.gridX === gridX && mod.gridY === gridY)) return;
+        if (!checkPlacementValidity(gridX, gridY, rotation, pendingModule)) return;
 
-        const liveLevels = getModuleLevels(activeUpgradesRef.current);
-        const projectedGridSize = getConstructionGridSize(
-            Object.values(liveLevels).reduce((sum, level) => sum + level, 0) + 1,
-            liveLevels.CHASSIS + (pendingModule.type === "CHASSIS" ? 1 : 0),
-        );
-        if (gridX < 0 || gridY < 0 || gridX >= projectedGridSize || gridY >= projectedGridSize) return;
 
         const upgrade = pendingModule;
         const nextModuleLevel = activeUpgradesRef.current.filter((entry) => entry.type === upgrade.type).length + 1;
+
+        const liveLevels = getModuleLevels(activeUpgradesRef.current);
+        const statsMultiplier = upgrade.type === "EXTRUSION" && liveLevels.EXTRUSION >= 8 ? 0.5 : 1; // Diminishing returns
+
+        setStats((prev) => {
+            const next = { ...prev };
+            if (upgrade.type === "SPEED") next.speedMultiplier += (upgrade.value * statsMultiplier);
+            if (upgrade.type === "VISION") next.visionMultiplier += (upgrade.value * statsMultiplier);
+            if (upgrade.type === "EFFICIENCY") next.efficiencyMultiplier += (upgrade.value * statsMultiplier);
+            if (upgrade.type === "ARMOR") next.maxHp += (upgrade.value * statsMultiplier);
+            if (upgrade.type === "EXTRUSION") next.maxHp += (upgrade.value * 20 * statsMultiplier);
+            if (upgrade.type === "TURRET") {
+                next.turretFireRate += 0.25;
+                next.turretDamage += (upgrade.value * statsMultiplier);
+            }
+            if (upgrade.type === "LASER") {
+                next.laserDamage += (upgrade.value * statsMultiplier);
+            }
+            return next;
+        });
 
         setActiveUpgrades((prev) => [...prev, upgrade]);
         setPlacedModules((prev) => [
@@ -682,6 +751,8 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                 gridX,
                 gridY,
                 rotation,
+                shapeW: upgrade.shapeW ?? 1,
+                shapeH: upgrade.shapeH ?? 1
             }
         ]);
 
@@ -716,7 +787,7 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                 next.maxHp += upgrade.value;
                 hpRef.current = Math.min((100 + next.maxHp), hpRef.current + upgrade.value * 0.65);
             }
-            if (upgrade.type === "CHASSIS") {
+            if (upgrade.type === "EXTRUSION") {
                 next.maxHp += 18;
                 next.collectionMultiplier += 0.06;
             }
@@ -760,9 +831,13 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
             { id: "start-turret", type: "TURRET", name: "Auto-Turret Mk I", description: "Default ballistic defense system.", rarity: "common", value: 1 }
         ]);
         setPlacedModules([
-            { id: "mod-start-turret", upgradeId: "start-turret", type: "TURRET", gridX: 2, gridY: 2, rotation: 0 }
+            { id: "mod-core", upgradeId: "core-chassis", type: "EXTRUSION", gridX: 5, gridY: 6, rotation: 0, shapeW: 4, shapeH: 3 },
+            { id: "mod-start-turret", upgradeId: "start-turret", type: "TURRET", gridX: 6, gridY: 7, rotation: 0, shapeW: 1, shapeH: 1 }
         ]);
-        placedModulesRef.current = [{ id: "mod-start-turret", upgradeId: "start-turret", type: "TURRET", gridX: 2, gridY: 2, rotation: 0 }];
+        placedModulesRef.current = [
+            { id: "mod-core", upgradeId: "core-chassis", type: "EXTRUSION", gridX: 5, gridY: 6, rotation: 0, shapeW: 4, shapeH: 3 },
+            { id: "mod-start-turret", upgradeId: "start-turret", type: "TURRET", gridX: 6, gridY: 7, rotation: 0, shapeW: 1, shapeH: 1 }
+        ];
         setStats({
             speedMultiplier: 1,
             visionMultiplier: 1,
@@ -1350,7 +1425,7 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
 
             const gripBase = handbrakeInput ? PHYSICS.lateralGripDrift : PHYSICS.lateralGrip;
             const assistGripFactor = stabilityAssistRef.current ? 1.12 : 0.9;
-            const chassisGripFactor = 1 + Math.min(moduleLevelsLive.CHASSIS * 0.04, 0.16);
+            const chassisGripFactor = 1 + Math.min(moduleLevelsLive.EXTRUSION * 0.04, 0.16);
             const gripValue = clamp(gripBase * driveMeta.grip * assistGripFactor * chassisGripFactor, 0.38, 0.97);
             lateralSpeed *= Math.pow(gripValue, dt);
 
@@ -1444,6 +1519,22 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
 
             const shieldIsActive = shieldTimerRef.current > 0;
 
+            // Compute exact dynamic radius of the modular chassis
+            let maxRadius = 18;
+            for (const mod of placedModulesRef.current) {
+                if (mod.type === "EXTRUSION") {
+                    const mw = (mod.rotation % 180 !== 0) ? (mod.shapeH || 1) : (mod.shapeW || 1);
+                    const mh = (mod.rotation % 180 !== 0) ? (mod.shapeW || 1) : (mod.shapeH || 1);
+                    const nx1 = Math.abs(mod.gridX - 7.5);
+                    const nx2 = Math.abs(mod.gridX + mw - 7.5);
+                    const ny1 = Math.abs(mod.gridY - 7.5);
+                    const ny2 = Math.abs(mod.gridY + mh - 7.5);
+                    const maxDistCells = Math.hypot(Math.max(nx1, nx2), Math.max(ny1, ny2));
+                    const distPixels = maxDistCells * 12;
+                    if (distPixels > maxRadius) maxRadius = distPixels;
+                }
+            }
+
             // Robot AI & Player Collision
             let playerDamageTaken = 0;
             let boostRamKills = 0;
@@ -1496,12 +1587,12 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                 if (bot.isHitTimer > 0) bot.isHitTimer -= dt;
 
                 // Player Collision
-                if (dist < bot.radius + 18 + (moduleLevelsLive.CHASSIS * 2)) {
+                if (dist < bot.radius + maxRadius) {
                     const isBoostRam = boostActiveRef.current;
                     if (isBoostRam) {
                         boostRamKills += 1;
                         if (collisionCooldownRef.current <= 0.01 && !shieldIsActive) {
-                            const boostSelfDamage = clamp(2.4 - moduleLevelsLive.CHASSIS * 0.24, 1, 2.4);
+                            const boostSelfDamage = clamp(2.4 - moduleLevelsLive.EXTRUSION * 0.24, 1, 2.4);
                             playerDamageTaken += boostSelfDamage;
                             collisionCooldownRef.current = 10;
                         }
@@ -1534,7 +1625,7 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
 
                     if (collisionCooldownRef.current <= 0.01 && !shieldIsActive) {
                         const baseCollisionDamage = 6 + (bot.maxHp * 0.45) + (currentSpeed * 0.28);
-                        const chassisDamping = 1 - Math.min(moduleLevelsLive.CHASSIS * 0.08, 0.35);
+                        const chassisDamping = 1 - Math.min(moduleLevelsLive.EXTRUSION * 0.08, 0.35);
                         playerDamageTaken += clamp(baseCollisionDamage * chassisDamping, 5, 11);
                         collisionCooldownRef.current = 18;
                     }
@@ -1592,9 +1683,9 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                 })
                 .filter((target) => target.inSight);
 
-            const liveGridSize = getConstructionGridSize(activeUpgradesList.length, moduleLevelsLive.CHASSIS);
-            const chassisWidth = 30 + moduleLevelsLive.CHASSIS * 3.6;
-            const chassisLength = 38 + moduleLevelsLive.CHASSIS * 4.4;
+            const liveGridSize = 15;
+            const chassisWidth = 30 + moduleLevelsLive.EXTRUSION * 3.6;
+            const chassisLength = 38 + moduleLevelsLive.EXTRUSION * 4.4;
             const forwardAngle = Math.atan2(-Math.cos(rover.rotation), Math.sin(rover.rotation));
 
             const createMount = (module: PlacedModule) => {
@@ -1850,11 +1941,8 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
     const activeDriveMeta = DRIVE_PROFILE_META[telemetry.driveProfile];
     const moduleLevels = getModuleLevels(activeUpgrades);
     const totalModuleLevels = Object.values(moduleLevels).reduce((total, level) => total + level, 0);
-    const roverGridSize = getConstructionGridSize(totalModuleLevels, moduleLevels.CHASSIS);
-    const constructionGridSize = getConstructionGridSize(
-        totalModuleLevels + (pendingModule ? 1 : 0),
-        moduleLevels.CHASSIS + (pendingModule?.type === "CHASSIS" ? 1 : 0)
-    );
+    const roverGridSize = 15;
+    const constructionGridSize = 15;
     const roverCellPercent = 100 / roverGridSize;
     const constructionCellPercent = 100 / constructionGridSize;
     const weaponProfileDisplay = getWeaponProfile(moduleLevels, stats);
@@ -2006,8 +2094,8 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                     <div
                         className="relative transition-all duration-700 ease-out"
                         style={{
-                            width: 48 + (moduleLevels.CHASSIS * 12),
-                            height: 64 + (moduleLevels.CHASSIS * 16),
+                            width: `180px`,
+                            height: `180px`,
                             transformStyle: "preserve-3d",
                         }}
                     >
@@ -2015,8 +2103,8 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                         {telemetry.shieldActive && (
                             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/60 bg-cyan-400/20 shadow-[0_0_40px_rgba(34,211,238,0.4)]"
                                 style={{
-                                    width: 140 + (moduleLevels.CHASSIS * 16),
-                                    height: 140 + (moduleLevels.CHASSIS * 16),
+                                    width: `240px`,
+                                    height: `240px`,
                                     transform: "translate(-50%, -50%) translateZ(20px)"
                                 }}
                             />
@@ -2027,149 +2115,104 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                         {/* Main Body Elevation Group */}
                         <div className="absolute inset-0" style={{ transform: "translateZ(10px)", transformStyle: "preserve-3d" }}>
 
-                            {/* Top Deck */}
-                            <div className={cn(
-                                "absolute inset-0 z-20 rounded-md border border-white/10 transition-colors duration-500",
-                                activeUpgrades.some(u => u.type === 'ARMOR') ? "bg-emerald-950 border-emerald-500/30" :
-                                    activeUpgrades.length > 4 ? "bg-amber-900" :
-                                        activeUpgrades.length > 2 ? "bg-blue-900" : "bg-zinc-900"
-                            )}
-                                style={{ transform: "translateZ(10px)", transformStyle: "preserve-3d" }}>
+                            {/* Render EXTRUSIONS as solid blocks */}
+                            {placedModules.filter(m => m.type === "EXTRUSION").map((mod) => (
+                                <div
+                                    key={`hull-${mod.id}`}
+                                    className="absolute transform-style-preserve-3d"
+                                    style={{
+                                        left: `${(mod.gridX / roverGridSize) * 100}%`,
+                                        top: `${(mod.gridY / roverGridSize) * 100}%`,
+                                        width: `${(mod.shapeW || 1) * roverCellPercent}%`,
+                                        height: `${(mod.shapeH || 1) * roverCellPercent}%`,
+                                        transformStyle: "preserve-3d",
+                                    }}
+                                >
+                                    {/* 3D Walls for this block */}
+                                    <div className="absolute left-0 top-0 bottom-0 w-[10px] origin-left border-y border-white/5 bg-zinc-950/90" style={{ transform: "rotateY(-90deg)" }} />
+                                    <div className="absolute right-0 top-0 bottom-0 w-[10px] origin-right border-y border-white/5 bg-zinc-950/90" style={{ transform: "rotateY(90deg)" }} />
+                                    <div className="absolute top-0 left-0 right-0 h-[10px] origin-top border-x border-white/5 bg-zinc-900/90" style={{ transform: "rotateX(90deg)" }} />
+                                    <div className="absolute bottom-0 left-0 right-0 h-[10px] origin-bottom border-x border-white/5 bg-zinc-950" style={{ transform: "rotateX(-90deg)" }} />
 
-                                {/* Front Bumper & Grill */}
-                                <div className="absolute top-[-2px] left-1/2 w-[85%] h-4 -translate-x-1/2 bg-zinc-950 rounded-t-lg border-x border-white/5" />
-
-                                {/* Headlights */}
-                                <div className="absolute top-0 left-[10%] w-[15%] h-2 bg-amber-100 rounded-sm shadow-[0_0_15px_rgba(253,230,138,0.8)] blur-[0.5px]" />
-                                <div className="absolute top-0 right-[10%] w-[15%] h-2 bg-amber-100 rounded-sm shadow-[0_0_15px_rgba(253,230,138,0.8)] blur-[0.5px]" />
-
-                                {/* Windshield */}
-                                <div className="absolute top-3 left-1/2 w-[60%] h-6 -translate-x-1/2 bg-cyan-950/80 border border-cyan-400/30 rounded flex items-end justify-center pb-1 shadow-[0_0_10px_rgba(34,211,238,0.15)] backdrop-blur-sm">
-                                    <div className="w-[80%] h-[1px] bg-cyan-400/20" />
-                                </div>
-
-                                {/* Engine/Rear Box */}
-                                <div className="absolute bottom-2 left-1/2 w-8 h-5 -translate-x-1/2 bg-zinc-950 rounded border border-white/5 shadow-inner" />
-
-                                {/* VISUAL UPGRADES: Placed Modules */}
-                                {placedModules.map((mod) => (
-                                    <div
-                                        key={`game-mod-${mod.id}`}
-                                        className="absolute flex items-center justify-center"
-                                        style={{
-                                            left: `${(mod.gridX / roverGridSize) * 100}%`,
-                                            top: `${(mod.gridY / roverGridSize) * 100}%`,
-                                            width: `${roverCellPercent}%`,
-                                            height: `${roverCellPercent}%`,
-                                            transform: `rotateZ(${mod.rotation}deg) translateZ(5px)`
-                                        }}
-                                    >
-                                        {mod.type === "TURRET" && (
-                                            <div className="flex h-4 w-4 items-center justify-center rounded-full border border-red-500/50 bg-zinc-950 shadow-[0_0_10px_rgba(239,68,68,0.3)]">
-                                                <div className="absolute left-1/2 top-[-3px] h-3 w-1 -translate-x-1/2 border border-white/10 bg-zinc-700">
-                                                    <div className="absolute left-0 top-0 h-[1px] w-full bg-red-400" />
+                                    {/* Top Deck of the Block */}
+                                    <div className={cn(
+                                        "absolute inset-0 z-20 rounded-sm border border-white/10 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] transition-colors duration-500",
+                                        activeUpgrades.some(u => u.type === 'ARMOR') ? "bg-emerald-950 border-emerald-500/30" :
+                                            activeUpgrades.length > 4 ? "bg-amber-900" :
+                                                activeUpgrades.length > 2 ? "bg-blue-900" : "bg-zinc-900"
+                                    )}>
+                                        {/* If this is the CORE chassis, draw decorations */}
+                                        {mod.id === "mod-core" && (
+                                            <>
+                                                {/* Front Bumper & Grill */}
+                                                <div className="absolute top-[0px] left-1/2 w-[85%] h-3.5 -translate-x-1/2 bg-zinc-950 rounded-t-sm border-x border-white/5" />
+                                                {/* Headlights */}
+                                                <div className="absolute top-0.5 left-[10%] w-[15%] h-1.5 bg-amber-100 rounded-sm shadow-[0_0_15px_rgba(253,230,138,0.8)] blur-[0.5px]" />
+                                                <div className="absolute top-0.5 right-[10%] w-[15%] h-1.5 bg-amber-100 rounded-sm shadow-[0_0_15px_rgba(253,230,138,0.8)] blur-[0.5px]" />
+                                                {/* Windshield */}
+                                                <div className="absolute top-4 left-1/2 w-[70%] h-4 -translate-x-1/2 bg-cyan-950/80 border border-cyan-400/30 rounded flex items-end justify-center pb-0.5 shadow-[0_0_10px_rgba(34,211,238,0.15)] backdrop-blur-sm">
+                                                    <div className="w-[80%] h-[1px] bg-cyan-400/20" />
                                                 </div>
-                                            </div>
-                                        )}
-                                        {mod.type === "LASER" && (
-                                            <div className="flex h-2 w-4 items-center justify-center rounded-full border border-fuchsia-500/50 bg-zinc-950 shadow-[0_0_15px_rgba(217,70,239,0.5)]">
-                                                <div className="absolute left-1/2 top-0 h-[120%] w-[1px] -translate-x-1/2 bg-fuchsia-400" />
-                                                <div className="h-1 w-2 rounded-full bg-fuchsia-400" />
-                                            </div>
-                                        )}
-                                        {mod.type === "VISION" && (
-                                            <div className="relative h-3 w-3 animate-[spin_4s_linear_infinite] rounded-full border border-sky-400/50 bg-sky-900/80">
-                                                <div className="absolute left-1/2 top-0 h-[60%] w-[1px] -translate-x-1/2 bg-sky-400/50" />
-                                            </div>
-                                        )}
-                                        {mod.type === "ARMOR" && (
-                                            <div className="h-full w-full rounded-sm border-2 border-emerald-500/40 bg-emerald-950/80" />
-                                        )}
-                                        {mod.type === "EFFICIENCY" && (
-                                            <div className="h-1 w-[80%] rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
-                                        )}
-                                        {mod.type === "SPEED" && (
-                                            <div className="h-2 w-3 rounded-sm border border-blue-400/60 bg-blue-500/70 shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
-                                        )}
-                                        {mod.type === "CHASSIS" && (
-                                            <div className="h-3 w-3 rounded-sm border border-zinc-300/60 bg-zinc-500/60 shadow-[0_0_8px_rgba(161,161,170,0.45)]" />
+                                                {/* Engine/Rear Box */}
+                                                <div className="absolute bottom-1.5 left-1/2 w-6 h-4 -translate-x-1/2 bg-zinc-950 rounded border border-white/5 shadow-inner" />
+                                                {/* Core Engine Visual Injection */}
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+                                                    <div className="h-6 w-6 rounded-full bg-blue-500 blur-md mix-blend-screen" />
+                                                </div>
+                                            </>
                                         )}
                                     </div>
-                                ))}
-                            </div>
+                                </div>
+                            ))}
 
-                            {/* Sides (Simulated 3D Extrusion) */}
-                            {/* Left Wall */}
-                            <div className={cn(
-                                "absolute left-0 top-0 bottom-0 w-[10px] origin-left border-y border-white/5 transition-colors duration-500",
-                                activeUpgrades.some(u => u.type === 'ARMOR') ? "bg-emerald-900 border-emerald-500/30" :
-                                    activeUpgrades.length > 4 ? "bg-amber-800" :
-                                        activeUpgrades.length > 2 ? "bg-blue-800" : "bg-zinc-800"
-                            )} style={{ transform: "rotateY(-90deg)" }}>
-                            </div>
-                            {/* Right Wall */}
-                            <div className={cn(
-                                "absolute right-0 top-0 bottom-0 w-[10px] origin-right border-y border-white/5 transition-colors duration-500",
-                                activeUpgrades.some(u => u.type === 'ARMOR') ? "bg-emerald-900 border-emerald-500/30" :
-                                    activeUpgrades.length > 4 ? "bg-amber-800" :
-                                        activeUpgrades.length > 2 ? "bg-blue-800" : "bg-zinc-800"
-                            )} style={{ transform: "rotateY(90deg)" }}>
-                            </div>
-
-                            {/* Rear Wall */}
-                            <div className={cn(
-                                "absolute bottom-0 left-0 right-0 h-[10px] origin-bottom flex items-center justify-center gap-1 border-x border-white/5 transition-colors duration-500",
-                                activeUpgrades.some(u => u.type === 'ARMOR') ? "bg-emerald-900 border-emerald-500/30" :
-                                    activeUpgrades.length > 4 ? "bg-amber-800" :
-                                        activeUpgrades.length > 2 ? "bg-blue-800" : "bg-zinc-800"
-                            )} style={{ transform: "rotateX(-90deg)" }}>
-                                {activeUpgrades.some(u => u.type === "SPEED") ? (
-                                    // Speed Thrusters
-                                    <>
-                                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
-                                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-75 shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
-                                    </>
-                                ) : (
-                                    // Standard
-                                    <>
-                                        <div className="w-1.5 h-1.5 bg-orange-600 rounded-full animate-pulse" />
-                                        <div className="w-1.5 h-1.5 bg-orange-600 rounded-full animate-pulse delay-75" />
-                                    </>
-                                )}
-                            </div>
-                            {/* Front Wall */}
-                            <div className={cn(
-                                "absolute top-0 left-0 right-0 h-[10px] origin-top flex items-center justify-center border-x border-white/5 transition-colors duration-500",
-                                activeUpgrades.some(u => u.type === 'ARMOR') ? "bg-emerald-900 border-emerald-500/30" :
-                                    activeUpgrades.length > 4 ? "bg-amber-800" :
-                                        activeUpgrades.length > 2 ? "bg-blue-800" : "bg-zinc-800"
-                            )} style={{ transform: "rotateX(90deg)" }}>
-                            </div>
-
-                            {/* VISUAL UPGRADE: Spoiler (Speed Level 2) */}
-                            {activeUpgrades.filter(u => u.type === "SPEED").length > 1 && (
-                                <div className="absolute -bottom-2 left-0 right-0 h-4 bg-zinc-900 border border-white/10"
-                                    style={{ transform: "translateZ(12px) rotateX(-20deg)", transformOrigin: "bottom" }} />
-                            )}
+                            {/* VISUAL UPGRADES: Placed Modules (Attachments) */}
+                            {placedModules.filter(m => m.type !== "EXTRUSION").map((mod) => (
+                                <div
+                                    key={`game-mod-${mod.id}`}
+                                    className="absolute flex items-center justify-center pointer-events-none"
+                                    style={{
+                                        left: `${(mod.gridX / roverGridSize) * 100}%`,
+                                        top: `${(mod.gridY / roverGridSize) * 100}%`,
+                                        width: `${roverCellPercent}%`,
+                                        height: `${roverCellPercent}%`,
+                                        transform: `rotateZ(${mod.rotation}deg) translateZ(5px)`
+                                    }}
+                                >
+                                    {mod.type === "TURRET" && (
+                                        <div className="flex h-4 w-4 items-center justify-center rounded-full border border-red-500/50 bg-zinc-950 shadow-[0_0_10px_rgba(239,68,68,0.3)]">
+                                            <div className="absolute left-1/2 top-[-3px] h-3 w-1 -translate-x-1/2 border border-white/10 bg-zinc-700">
+                                                <div className="absolute left-0 top-0 h-[1px] w-full bg-red-400" />
+                                            </div>
+                                        </div>
+                                    )}
+                                    {mod.type === "LASER" && (
+                                        <div className="flex h-2 w-4 items-center justify-center rounded-full border border-fuchsia-500/50 bg-zinc-950 shadow-[0_0_15px_rgba(217,70,239,0.5)]">
+                                            <div className="absolute left-1/2 top-0 h-[120%] w-[1px] -translate-x-1/2 bg-fuchsia-400" />
+                                            <div className="h-1 w-2 rounded-full bg-fuchsia-400" />
+                                        </div>
+                                    )}
+                                    {mod.type === "VISION" && (
+                                        <div className="relative h-3 w-3 animate-[spin_4s_linear_infinite] rounded-full border border-sky-400/50 bg-sky-900/80">
+                                            <div className="absolute left-1/2 top-0 h-[60%] w-[1px] -translate-x-1/2 bg-sky-400/50" />
+                                        </div>
+                                    )}
+                                    {mod.type === "ARMOR" && (
+                                        <div className="h-full w-full rounded-sm border-2 border-emerald-500/40 bg-emerald-950/80" />
+                                    )}
+                                    {mod.type === "EFFICIENCY" && (
+                                        <div className="h-1 w-[80%] rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+                                    )}
+                                    {mod.type === "SPEED" && (
+                                        <div className="h-2 w-3 rounded-sm border border-blue-400/60 bg-blue-500/70 shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
+                                    )}
+                                    {mod.type === "EXTRUSION" && (
+                                        <div className="h-3 w-3 rounded-sm border border-zinc-300/60 bg-zinc-500/60 shadow-[0_0_8px_rgba(161,161,170,0.45)]" />
+                                    )}
+                                </div>
+                            ))}
                         </div>
-
-
-                        {/* Tracks / Wheels (Base Layer) */}
-                        <div className="absolute -left-2 top-0 bottom-0 w-3 bg-zinc-900 border border-white/10"
-                            style={{ transform: "translateZ(4px)" }}>
-                            <div className="w-full h-full bg-[repeating-linear-gradient(0deg,transparent,transparent_3px,#000_4px)] opacity-50" />
-                        </div>
-                        <div className="absolute -right-2 top-0 bottom-0 w-3 bg-zinc-900 border border-white/10"
-                            style={{ transform: "translateZ(4px)" }}>
-                            <div className="w-full h-full bg-[repeating-linear-gradient(0deg,transparent,transparent_3px,#000_4px)] opacity-50" />
-                        </div>
-
-                        {/* Shadow */}
-                        <div className="absolute inset-0 bg-black/60 blur-md rounded-full scale-125" style={{ transform: "translateZ(0px)" }} />
                     </div>
-                </div>
-
-                <div className="pointer-events-none absolute left-4 top-4 z-20 flex flex-col gap-1 drop-shadow-md md:left-6 md:top-6">
+                </div>                    <div className="pointer-events-none absolute left-4 top-4 z-20 flex flex-col gap-1 drop-shadow-md md:left-6 md:top-6">
                     <div className="flex items-center gap-2">
                         <p className="text-[8px] font-black uppercase tracking-[0.28em] text-white/40">NAV</p>
                         <span className="text-[8px] font-mono text-primary/80">{headingDegrees.toFixed(0).padStart(3, "0")}°</span>
@@ -2625,91 +2668,78 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                                 </div>
                                 <p className="mt-2 text-[9px] font-mono uppercase tracking-[0.16em] text-white/45">
                                     {pendingModule
-                                        ? "Place the new module. Then rotate mounted weapons and save."
+                                        ? "Place the new module on an allowed cell. Then evaluate and save."
                                         : "Click mounted weapons to rotate firing direction, then Save & Resume."}
                                 </p>
                             </div>
 
-                            {/* Interactive 3D Spinning Rover Grid */}
-                            <div className="relative mt-8 flex h-[60vh] w-full max-w-[400px] items-center justify-center perspective-[1200px]">
-                                <motion.div
-                                    animate={{ rotateZ: 0 }} // Keep rover base stationary so the user can easily click the grid
-                                    transition={{ duration: 0 }}
-                                    className="relative mt-12 h-64 w-48 preserve-3d"
-                                    style={{ transformStyle: "preserve-3d", transform: "rotateX(55deg)" }}
-                                >
-                                    {/* Rotating Base Plate for Visual Flare (underneath rover) */}
-                                    <motion.div
-                                        animate={{ rotateZ: 360 }}
-                                        transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-                                        className="absolute left-1/2 top-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.03)_0%,transparent_70%)]"
-                                        style={{ transform: "translateZ(-30px)" }}
-                                    />
-                                    {/* Rover Body Underneath */}
-                                    <div className="absolute inset-x-0 inset-y-0 rounded-xl border border-white/10 bg-zinc-900 shadow-[0_0_50px_rgba(0,0,0,0.8)]" style={{ transform: "translateZ(-10px)" }}>
-                                        {/* Front Cab area */}
-                                        <div className="absolute top-0 inset-x-0 h-[20%] bg-zinc-800 rounded-t-xl border-b border-black/50" />
-                                        {/* Windshield */}
-                                        <div className="absolute top-4 left-1/2 w-[60%] h-6 -translate-x-1/2 bg-cyan-950 border border-cyan-400/30 rounded-md shadow-[0_0_15px_rgba(34,211,238,0.2)_inset]" />
-                                        {/* Headlights */}
-                                        <div className="absolute top-[-2px] left-6 w-8 h-3 bg-amber-100 rounded-sm shadow-[0_0_20px_rgba(253,230,138,0.8)] filter blur-[1px]" />
-                                        <div className="absolute top-[-2px] right-6 w-8 h-3 bg-amber-100 rounded-sm shadow-[0_0_20px_rgba(253,230,138,0.8)] filter blur-[1px]" />
+                            {/* Flat 2D Grid Layout Editor */}
+                            <div className="relative mt-8 flex aspect-square w-full max-w-[480px] items-center justify-center p-4">
+                                <div className="relative h-full w-full rounded-2xl bg-zinc-950 shadow-inner">
+                                    {/* Placed Modules Visualization Layer */}
+                                    {placedModules.map((mod) => {
+                                        const isChassis = mod.type === "EXTRUSION";
+                                        const wCells = (pendingRotation % 2 !== 0 && !isChassis && pendingModule?.id === mod.id) ? mod.shapeH || 1 : mod.shapeW || 1;
+                                        const hCells = (pendingRotation % 2 !== 0 && !isChassis && pendingModule?.id === mod.id) ? mod.shapeW || 1 : mod.shapeH || 1;
 
-                                        {/* Engine glow */}
-                                        <div className="absolute bottom-[-10px] left-1/2 h-4 w-24 -translate-x-1/2 rounded-full bg-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.6)] blur-md" />
-                                    </div>
-
-                                    {/* Placed Modules Visualization */}
-                                    {placedModules.map((mod) => (
-                                        <div
-                                            key={`placed-${mod.id}`}
-                                            className={cn(
-                                                "absolute z-10 flex items-center justify-center rounded border bg-zinc-800 shadow-lg",
-                                                selectedWeaponModuleId === mod.id ? "border-cyan-300/75 shadow-[0_0_18px_rgba(34,211,238,0.45)]" : "border-white/10"
-                                            )}
-                                            style={{
-                                                left: `${(mod.gridX / constructionGridSize) * 100}%`,
-                                                top: `${(mod.gridY / constructionGridSize) * 100}%`,
-                                                width: `${constructionCellPercent}%`,
-                                                height: `${constructionCellPercent}%`,
-                                                transform: `rotateZ(${mod.rotation}deg) translateZ(4px)`,
-                                            }}
-                                        >
-                                            {mod.type === "TURRET" && (
-                                                <div className="flex h-4 w-4 items-center justify-center rounded-full border border-red-500/50 bg-zinc-950 shadow-[0_0_10px_rgba(239,68,68,0.3)]">
-                                                    <div className="absolute left-1/2 top-[-3px] h-3 w-1 -translate-x-1/2 border border-white/10 bg-zinc-700">
-                                                        <div className="absolute left-0 top-0 h-[1px] w-full bg-red-400" />
+                                        return (
+                                            <div
+                                                key={`placed-${mod.id}`}
+                                                className={cn(
+                                                    "absolute flex items-center justify-center transition-all duration-300",
+                                                    isChassis ? "z-10 rounded border border-white/10 bg-zinc-800 shadow-md" : "z-30",
+                                                    selectedWeaponModuleId === mod.id && !isChassis ? "scale-125 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" : ""
+                                                )}
+                                                style={{
+                                                    left: `${(mod.gridX / constructionGridSize) * 100}%`,
+                                                    top: `${(mod.gridY / constructionGridSize) * 100}%`,
+                                                    width: `${(wCells / constructionGridSize) * 100}%`,
+                                                    height: `${(hCells / constructionGridSize) * 100}%`,
+                                                }}
+                                            >
+                                                {!isChassis && (
+                                                    <div style={{ transform: `rotateZ(${mod.rotation}deg)` }}>
+                                                        {mod.type === "TURRET" && (
+                                                            <div className="flex xl:h-6 xl:w-6 h-4 w-4 items-center justify-center rounded-full border border-red-500/80 bg-zinc-950 shadow-lg shadow-red-500/40">
+                                                                <div className="absolute left-1/2 top-[-4px] xl:h-4 xl:w-1.5 h-3 w-1 -translate-x-1/2 border border-white/20 bg-zinc-700">
+                                                                    <div className="absolute left-0 top-0 h-[1px] w-full bg-red-400" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {mod.type === "LASER" && (
+                                                            <div className="flex xl:h-3 xl:w-5 h-2 w-4 items-center justify-center rounded-full border border-fuchsia-500/80 bg-zinc-950 shadow-lg shadow-fuchsia-500/50">
+                                                                <div className="absolute left-1/2 top-0 h-[140%] w-[2px] -translate-x-1/2 bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.8)]" />
+                                                                <div className="h-1.5 w-2.5 rounded-full bg-fuchsia-300" />
+                                                            </div>
+                                                        )}
+                                                        {mod.type === "VISION" && (
+                                                            <div className="relative xl:h-5 xl:w-5 h-3 w-3 animate-[spin_4s_linear_infinite] rounded-full border border-sky-400/80 bg-sky-900/90 shadow-lg shadow-sky-500/30">
+                                                                <div className="absolute left-1/2 top-0 h-[60%] w-[1.5px] -translate-x-1/2 bg-cyan-300 shadow-[0_0_5px_currentColor]" />
+                                                            </div>
+                                                        )}
+                                                        {mod.type === "ARMOR" && (
+                                                            <div className="h-full w-full max-h-5 max-w-5 rounded bg-[radial-gradient(circle_at_center,rgba(52,211,153,0.3)_0%,rgba(6,78,59,0.8)_80%)] shadow-inner border border-emerald-400/50" />
+                                                        )}
+                                                        {mod.type === "SPEED" && (
+                                                            <div className="xl:h-3 xl:w-5 h-2 w-3 rounded border border-blue-400 bg-blue-500/90 shadow-[0_0_15px_rgba(59,130,246,0.8)]" />
+                                                        )}
                                                     </div>
-                                                </div>
-                                            )}
-                                            {mod.type === "LASER" && (
-                                                <div className="flex h-2 w-4 items-center justify-center rounded-full border border-fuchsia-500/50 bg-zinc-950 shadow-[0_0_15px_rgba(217,70,239,0.5)]">
-                                                    <div className="absolute left-1/2 top-0 h-[120%] w-[1px] -translate-x-1/2 bg-fuchsia-400" />
-                                                    <div className="h-1 w-2 rounded-full bg-fuchsia-400" />
-                                                </div>
-                                            )}
-                                            {mod.type === "VISION" && (
-                                                <div className="relative h-3 w-3 animate-[spin_4s_linear_infinite] rounded-full border border-sky-400/50 bg-sky-900/80">
-                                                    <div className="absolute left-1/2 top-0 h-[60%] w-[1px] -translate-x-1/2 bg-sky-400/50" />
-                                                </div>
-                                            )}
-                                            {mod.type === "ARMOR" && (
-                                                <div className="h-full w-full rounded-sm border-2 border-emerald-500/40 bg-emerald-950/80" />
-                                            )}
-                                            {mod.type === "SPEED" && (
-                                                <div className="h-2 w-3 rounded-sm border border-blue-400/60 bg-blue-500/70 shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
-                                            )}
-                                            {mod.type === "CHASSIS" && (
-                                                <div className="h-3 w-3 rounded-sm border border-zinc-300/60 bg-zinc-500/60 shadow-[0_0_8px_rgba(161,161,170,0.45)]" />
-                                            )}
-                                        </div>
-                                    ))}
+                                                )}
 
-                                    {/* Adaptive Snap Grid */}
+                                                {/* Core Engine Visual Injection for the primary chassis block */}
+                                                {isChassis && mod.id === "mod-core" && (
+                                                    <div className="absolute inset-0 flex items-center justify-center opacity-40">
+                                                        <div className="h-4 w-4 rounded-full bg-blue-500 blur-sm mix-blend-screen" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+
+                                    {/* Interactive Cell Grid Overlay */}
                                     <div
-                                        className="absolute inset-0 z-20 grid gap-0.5 p-1"
+                                        className="absolute inset-0 z-40 grid p-2 gap-0.5"
                                         style={{
-                                            transform: "translateZ(8px)",
                                             gridTemplateColumns: `repeat(${constructionGridSize}, minmax(0, 1fr))`,
                                             gridTemplateRows: `repeat(${constructionGridSize}, minmax(0, 1fr))`,
                                         }}
@@ -2717,42 +2747,52 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                                         {Array.from({ length: constructionGridSize * constructionGridSize }).map((_, i) => {
                                             const gridX = i % constructionGridSize;
                                             const gridY = Math.floor(i / constructionGridSize);
-                                            const cellModule = placedModules.find((m) => m.gridX === gridX && m.gridY === gridY);
-                                            const isOccupied = Boolean(cellModule);
+                                            // Is this specific 1x1 cell occupied by ANY module (accounting for shape size)?
+                                            const occupancyState = placedModules.find((m) => {
+                                                const cw = m.shapeW || 1;
+                                                const ch = m.shapeH || 1;
+                                                return gridX >= m.gridX && gridX < m.gridX + cw && gridY >= m.gridY && gridY < m.gridY + ch;
+                                            });
+
+                                            // Is this cell the anchoring top-left origin of an attachment?
+                                            const cellAnchorModule = placedModules.find((m) => m.gridX === gridX && m.gridY === gridY);
+
+                                            const isOccupiedByChassis = Boolean(occupancyState && occupancyState.type === "EXTRUSION");
+                                            const isOccupiedByAttachment = Boolean(occupancyState && occupancyState.type !== "EXTRUSION");
+
                                             const canRotateCellWeapon = Boolean(
                                                 !pendingModule &&
-                                                cellModule &&
-                                                (cellModule.type === "TURRET" || cellModule.type === "LASER")
+                                                cellAnchorModule &&
+                                                (cellAnchorModule.type === "TURRET" || cellAnchorModule.type === "LASER")
                                             );
+                                            const isValidPlacement = pendingModule ? checkPlacementValidity(gridX, gridY, pendingRotation * 90, pendingModule) : false;
 
                                             return (
-                                                <div key={`cell-wrap-${i}`} className="relative h-full w-full p-0.5">
+                                                <div key={`cell-wrap-${i}`} className="relative h-full w-full">
                                                     <button
                                                         type="button"
                                                         onClick={() => {
                                                             if (pendingModule) {
-                                                                if (!isOccupied) confirmPlacement(gridX, gridY, pendingRotation * 90);
+                                                                if (isValidPlacement) confirmPlacement(gridX, gridY, pendingRotation * 90);
                                                                 return;
                                                             }
 
-                                                            if (canRotateCellWeapon && cellModule) {
-                                                                rotatePlacedWeaponModule(cellModule.id);
+                                                            if (canRotateCellWeapon && cellAnchorModule) {
+                                                                rotatePlacedWeaponModule(cellAnchorModule.id);
                                                             }
                                                         }}
                                                         className={cn(
-                                                            "group h-full w-full rounded-sm border transition-all duration-200",
+                                                            "group h-full w-full rounded-sm transition-all duration-200",
                                                             pendingModule
                                                                 ? (
-                                                                    isOccupied
-                                                                        ? "border-red-500/30 bg-red-500/10 cursor-not-allowed"
-                                                                        : "border-white/10 bg-white/5 hover:scale-110 hover:border-red-400 hover:bg-red-400/30 hover:shadow-[0_0_15px_rgba(239,68,68,0.5)] cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500"
+                                                                    isValidPlacement
+                                                                        ? "border border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-400 hover:bg-emerald-400/30 cursor-pointer focus:outline-none"
+                                                                        : "border border-red-500/30 bg-red-500/10 cursor-not-allowed hover:bg-red-500/20"
                                                                 )
                                                                 : (
                                                                     canRotateCellWeapon
-                                                                        ? "border-cyan-500/30 bg-cyan-500/10 hover:scale-105 hover:border-cyan-300 hover:bg-cyan-400/20 cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400"
-                                                                        : isOccupied
-                                                                            ? "border-white/10 bg-white/5 cursor-default"
-                                                                            : "border-white/10 bg-white/5 cursor-default"
+                                                                        ? "border border-cyan-500/50 bg-cyan-500/20 hover:scale-105 hover:border-cyan-300 hover:bg-cyan-400/30 cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                                                                        : "border border-white/5 hover:border-white/20 bg-transparent cursor-default"
                                                                 )
                                                         )}
                                                         aria-label={pendingModule
@@ -2761,27 +2801,27 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                                                                 ? `Rotate weapon mount at column ${gridX + 1}, row ${gridY + 1}`
                                                                 : `Construction cell ${gridX + 1}, ${gridY + 1}`}
                                                     >
-                                                        {/* Hover projection of pending module */}
-                                                        {pendingModule && !isOccupied && (
+                                                        {/* Hover projection of pending module origin dot */}
+                                                        {pendingModule && (
                                                             <div
-                                                                className="absolute inset-1 m-auto flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100"
-                                                                style={{ transform: `rotateZ(${pendingRotation * 90}deg)` }}
+                                                                className="absolute inset-0 m-auto flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100"
                                                             >
                                                                 <div className={cn(
-                                                                    "h-2 w-2 rounded-full shadow-[0_0_10px_currentColor]",
+                                                                    "h-1.5 w-1.5 rounded-full shadow-[0_0_10px_currentColor]",
                                                                     pendingModule.type === "TURRET" ? "bg-amber-400 text-amber-400" :
                                                                         pendingModule.type === "LASER" ? "bg-fuchsia-500 text-fuchsia-500" :
                                                                             pendingModule.type === "ARMOR" ? "bg-zinc-300 text-zinc-300" :
                                                                                 pendingModule.type === "VISION" ? "bg-cyan-400 text-cyan-400" :
-                                                                                    pendingModule.type === "SPEED" ? "bg-blue-400 text-blue-400" :
-                                                                                        pendingModule.type === "CHASSIS" ? "bg-zinc-400 text-zinc-400" : "bg-emerald-400 text-emerald-400"
+                                                                                    pendingModule.type === "SPEED" ? "bg-blue-400 text-blue-400" : "bg-emerald-400 text-emerald-400"
                                                                 )} />
                                                             </div>
                                                         )}
 
                                                         {!pendingModule && canRotateCellWeapon && (
-                                                            <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 rounded bg-cyan-400/20 px-1 py-[1px] text-[7px] font-black uppercase tracking-[0.12em] text-cyan-200">
-                                                                Rotate
+                                                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <svg className="h-4 w-4 text-cyan-200 drop-shadow-[0_0_5px_currentColor]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                                </svg>
                                                             </div>
                                                         )}
                                                     </button>
@@ -2789,7 +2829,7 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                                             );
                                         })}
                                     </div>
-                                </motion.div>
+                                </div>
                             </div>
                         </motion.div>
                     )}
@@ -2838,6 +2878,6 @@ export function TerraForge({ onCollect }: TerraForgeProps) {
                     )}
                 </AnimatePresence>
             </div>
-        </div>
+        </div >
     );
 }
