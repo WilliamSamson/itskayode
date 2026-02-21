@@ -23,15 +23,27 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="relative isolate overflow-hidden bg-black">
-      <StardustBackground />
-      <div className="relative z-10 space-y-20 pt-10 md:space-y-32">
+    <div className="relative isolate overflow-hidden bg-black selection:bg-primary/30">
+      <StardustBackground variant="neural-top" />
+      <div className="relative z-10 space-y-20 pt-8 sm:pt-10 md:space-y-32">
         {/* Hero Section */}
-        <section className="relative pt-10 md:pt-28 pb-10 overflow-hidden">
+        <section className="relative overflow-hidden pb-8 pt-8 sm:pb-10 sm:pt-10 md:pt-20 lg:pt-28">
+          {/* Engineering Decorative Crosshairs */}
+          <div className="absolute top-20 left-10 md:left-20 text-white/10 hidden md:block">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+              <path d="M12 2v20M2 12h20" />
+              <circle cx="12" cy="12" r="6" />
+            </svg>
+          </div>
+          <div className="absolute bottom-10 right-10 md:right-20 text-white/10 hidden md:block">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+              <path d="M12 2v20M2 12h20" />
+            </svg>
+          </div>
           {/* Background Depth Components */}
           <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:100px_100px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)] pointer-events-none" />
 
-          <div className="relative z-10 grid max-w-6xl gap-10 md:grid-cols-[1.2fr_0.8fr] md:gap-14">
+          <div className="relative z-10 grid max-w-6xl gap-10 md:gap-12 lg:grid-cols-[1.2fr_0.8fr] lg:gap-14">
             <div className="space-y-10 md:space-y-14">
               {/* Status Indicator */}
               <div className="inline-flex items-center gap-4 group">
@@ -78,7 +90,7 @@ export default function HomePage() {
                     <div className="h-[1px] flex-1 bg-white/5" />
                   </div>
 
-                  <div className="space-y-4 max-w-2xl text-xl md:text-3xl font-heading font-medium tracking-tight leading-[1.2]">
+                  <div className="max-w-2xl space-y-4 text-lg font-heading font-medium leading-[1.2] tracking-tight sm:text-xl md:text-3xl">
                     <p className="text-text/60">
                       I&apos;m <span className="text-white font-black">{siteContent.fullName.split(' ')[0]}</span>, an engineer building at the
                     </p>
@@ -94,29 +106,29 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-4 md:gap-10 pt-4">
+                <div className="flex flex-wrap gap-4 pt-4 md:gap-10">
                   <Link
                     href="/projects"
-                    className="group relative inline-flex items-center justify-center px-10 py-6 border border-white text-white font-black text-xs md:text-sm uppercase tracking-[0.3em] transition-all hover:bg-white hover:text-black overflow-hidden"
+                    className="group relative inline-flex items-center justify-center overflow-hidden border border-white px-6 py-4 text-[10px] font-black uppercase tracking-[0.24em] text-white transition-all hover:bg-white hover:text-black sm:px-10 sm:py-6 sm:text-xs sm:tracking-[0.3em] md:text-sm"
                   >
                     <span className="relative z-10">Explore Works</span>
                     <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                   </Link>
                   <button
                     onClick={() => setIsContactModalOpen(true)}
-                    className="group inline-flex items-center gap-6 text-xs md:text-sm font-black text-white uppercase tracking-[0.4em] transition-all hover:text-primary outline-none"
+                    className="group inline-flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.25em] text-white transition-all hover:text-primary outline-none sm:gap-6 sm:text-xs sm:tracking-[0.4em] md:text-sm"
                   >
                     <span>Let&apos;s Talk</span>
                     <div className="flex flex-col gap-1 items-start">
-                      <div className="h-[1px] w-12 bg-white/20 group-hover:w-16 group-hover:bg-primary transition-all duration-500" />
-                      <div className="h-[1px] w-8 bg-white/40 group-hover:w-12 group-hover:bg-primary transition-all duration-500 delay-75" />
+                      <div className="h-[1px] w-10 bg-white/20 transition-all duration-500 group-hover:w-14 group-hover:bg-primary sm:w-12 sm:group-hover:w-16" />
+                      <div className="h-[1px] w-6 bg-white/40 transition-all duration-500 delay-75 group-hover:w-10 group-hover:bg-primary sm:w-8 sm:group-hover:w-12" />
                     </div>
                   </button>
                 </div>
               </div>
             </div>
 
-            <div className="relative mx-auto mt-6 w-full max-w-[140px] md:max-w-[200px] aspect-square md:mt-14">
+            <div className="relative mx-auto mt-8 aspect-square w-full max-w-[124px] sm:mt-6 sm:max-w-[150px] md:max-w-[180px] lg:mt-14 lg:max-w-[200px]">
               <div className="relative h-full w-full p-3">
                 {/* Revolving Technical Rings */}
                 <motion.div
@@ -171,11 +183,11 @@ export default function HomePage() {
         />
 
         {/* Quote Section */}
-        <section className="flex justify-center px-4">
+        <section className="flex justify-center px-0 sm:px-4">
           <div className="max-w-xl md:max-w-2xl w-full">
             <div className="relative border border-white/10 p-6 md:p-10 bg-black">
               <div className="absolute -top-3 left-4 bg-black px-2 text-2xl md:text-3xl text-white/30 font-serif font-black">&quot;</div>
-              <p className="min-h-[3.75rem] text-center text-lg font-medium italic leading-relaxed text-white md:min-h-[4rem] md:text-left md:text-xl">
+              <p className="min-h-[3.75rem] text-center text-lg font-medium italic leading-relaxed text-white md:min-h-[4rem] md:text-left md:text-xl relative z-10">
                 <span className="font-mono">
                   The best engineering turns complex systems into dependable outcomes.
                 </span>
@@ -199,7 +211,7 @@ export default function HomePage() {
           <div className="flex items-end justify-between mb-8 transition-all px-4 md:px-0">
             <SectionHeading title="Work" description="A collection of technical challenges and creative solutions." />
           </div>
-          <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2">
             {homeProjects.map((project) => (
               <ProjectCard key={project.slug} project={project} />
             ))}
@@ -216,10 +228,10 @@ export default function HomePage() {
         </section>
 
         {/* Skills Section */}
-        <section id="skills" className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-16 items-start px-4 md:px-0">
+        <section id="skills" className="grid grid-cols-1 items-start gap-10 px-4 md:grid-cols-3 md:gap-16 md:px-0">
           <div className="md:col-span-1">
             <SectionHeading title="Abilities" line={false} />
-            <p className="text-text/60 font-medium leading-relaxed mt-[-1rem] md:mt-[-2rem] text-sm md:text-base">
+            <p className="mt-0 text-sm font-medium leading-relaxed text-text/60 md:text-base">
               Technologies I have used across production projects and focused exploratory builds.
             </p>
           </div>
@@ -277,16 +289,16 @@ export default function HomePage() {
         </section>
 
         {/* Contact Section */}
-        <section id="contacts" className="border-t border-white/5 pt-16 md:pt-32 pb-10 px-4 md:px-0">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 md:gap-20">
-            <div className="space-y-6 md:space-y-8">
-              <h2 className="text-4xl md:text-6xl lg:text-8xl font-heading font-black text-white tracking-tighter leading-[0.9]">START A <br /><span className="text-primary">CONVERSATION</span>.</h2>
+        <section id="contacts" className="border-t border-white/5 px-4 pb-12 pt-14 sm:pt-16 md:px-0 md:pb-14 md:pt-24 lg:pt-32">
+          <div className="grid grid-cols-1 items-start gap-10 md:gap-14 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:gap-16 2xl:gap-20">
+            <div className="min-w-0 space-y-6 md:space-y-8">
+              <h2 className="max-w-full pb-2 text-[clamp(2.5rem,8vw,5.75rem)] font-heading font-black leading-[0.9] tracking-tighter text-white [overflow-wrap:anywhere] md:pb-0">START A <br /><span className="text-primary">CONVERSATION</span>.</h2>
               <p className="text-lg md:text-xl text-text/40 max-w-md font-medium tracking-tight">
                 Currently available for new projects and collaborations. If you have an idea, let&apos;s bring it to life.
               </p>
             </div>
-            <div className="flex flex-col gap-4 md:gap-6 justify-center">
-              <a href={`mailto:${siteContent.email}`} className="text-xl md:text-3xl lg:text-4xl font-heading font-bold text-white hover:text-primary transition-colors underline decoration-1 underline-offset-[8px] md:underline-offset-[12px] decoration-white/10 break-all sm:break-normal">
+            <div className="min-w-0 flex flex-col justify-center gap-4 md:gap-6 xl:pt-2">
+              <a href={`mailto:${siteContent.email}`} className="block max-w-full text-[clamp(1.25rem,3.2vw,2.25rem)] font-heading font-bold leading-tight text-white underline decoration-1 decoration-white/10 underline-offset-[8px] transition-colors [overflow-wrap:anywhere] hover:text-primary md:underline-offset-[12px]">
                 {siteContent.email}
               </a>
               <div className="flex flex-wrap gap-6 md:gap-10 pt-4">

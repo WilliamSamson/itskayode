@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { NodeDecryptor } from "@/components/games/node-decryptor";
 import { GravitySandbox } from "@/components/games/gravity-sandbox";
@@ -29,6 +29,10 @@ export default function FunPage() {
         });
     };
 
+    const handleArtifactSelect = useCallback((artifact: ArtifactType) => {
+        setActiveArtifact((prev) => (prev === artifact ? prev : artifact));
+    }, []);
+
     const getActiveArtifact = () => {
         switch (activeArtifact) {
             case "decryptor":
@@ -56,7 +60,7 @@ export default function FunPage() {
 
     return (
         <div className="relative min-h-screen isolate overflow-hidden bg-black pt-20">
-            <StardustBackground />
+            <StardustBackground variant="stars" />
 
             {/* HUD - Fragment Counter */}
             <div className="fixed top-24 right-4 md:right-12 z-50 flex flex-col items-end gap-2 group pointer-events-none transition-all">
@@ -85,7 +89,7 @@ export default function FunPage() {
 
             <main className="relative z-10 container mx-auto px-6 py-12">
                 <motion.div
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={false}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                     className="max-w-4xl mx-auto space-y-20"
@@ -118,23 +122,27 @@ export default function FunPage() {
                     </header>
 
                     {/* Interactive Switcher */}
-                    <nav className="flex flex-wrap items-center gap-x-6 md:gap-x-10 gap-y-4 border-b border-white/5 pb-8 overflow-x-auto no-scrollbar scroll-smooth">
+                    <nav className="scrollbar-hide relative z-30 flex flex-wrap items-center gap-x-6 gap-y-4 overflow-x-auto border-b border-white/5 pb-8 scroll-smooth md:gap-x-10">
                         {menuItems.map((item) => (
                             <button
                                 key={item.id}
-                                onClick={() => setActiveArtifact(item.id)}
+                                type="button"
+                                aria-pressed={activeArtifact === item.id}
+                                onClick={() => handleArtifactSelect(item.id)}
+                                onPointerUp={() => handleArtifactSelect(item.id)}
+                                style={{ touchAction: "manipulation" }}
                                 className={cn(
-                                    "relative text-[9px] md:text-[10px] whitespace-nowrap font-black uppercase tracking-[0.3em] transition-all pb-2",
+                                    "relative whitespace-nowrap pb-2 text-[9px] font-black uppercase tracking-[0.3em] transition-all md:text-[10px]",
                                     activeArtifact === item.id ? "text-primary" : "text-white/30 hover:text-white"
                                 )}
                             >
                                 {item.label}
-                                {activeArtifact === item.id && (
-                                    <motion.div
-                                        layoutId="fun-nav-pill"
-                                        className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary"
-                                    />
-                                )}
+                                <span
+                                    className={cn(
+                                        "absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary transition-opacity duration-200",
+                                        activeArtifact === item.id ? "opacity-100" : "opacity-0"
+                                    )}
+                                />
                             </button>
                         ))}
                     </nav>
@@ -143,7 +151,7 @@ export default function FunPage() {
                     <section className="relative min-h-[600px]">
                         <motion.div
                             key={activeArtifact}
-                            initial={{ opacity: 0, scale: 0.99 }}
+                            initial={false}
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ duration: 0.2 }}
                         >

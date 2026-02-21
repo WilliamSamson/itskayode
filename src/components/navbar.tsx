@@ -120,11 +120,18 @@ export function Navbar({ className, ...props }: ComponentPropsWithoutRef<"header
                         </span>
                         <span className="relative z-10 transition-transform duration-500 group-hover:-translate-y-1 inline-block">
                           {item.label}
+                          {/* Animated underline */}
+                          <span
+                            className={cn(
+                              "absolute -bottom-1.5 left-0 w-full h-[2px] bg-primary transition-transform duration-300 origin-left",
+                              isActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
+                            )}
+                          />
                         </span>
                       </div>
 
                       {/* Tiered Decorative Lines */}
-                      <div className="absolute -bottom-1 right-0 w-full flex flex-col items-end gap-1">
+                      <div className="absolute -bottom-2 right-0 w-full flex flex-col items-end gap-1">
                         <div
                           className={cn(
                             "h-[1px] bg-primary/20 transition-all duration-500",

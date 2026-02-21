@@ -30,6 +30,76 @@
   animation-name: stardust-twinkle;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes neural-node-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.neural-node {
+  animation: neural-node-pulse var(--duration, 3s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes particle-join {
+  0% {
+    transform: translate(0, 0) scale(0.4);
+    opacity: 0;
+  }
+
+  15% {
+    transform: translate(calc(var(--tx) * 0.2), calc(var(--ty) * 0.2)) scale(1);
+    opacity: 0.45;
+  }
+
+  85% {
+    transform: translate(calc(var(--tx) * 0.9), calc(var(--ty) * 0.9)) scale(0.9);
+    opacity: 0.75;
+  }
+
+  100% {
+    transform: translate(var(--tx), var(--ty)) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.particle-joining {
+  animation: particle-join var(--duration) cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  animation-delay: var(--delay);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+}
+
+@keyframes wave-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(calc(var(--wave-shift, 72vw) * -1), 0, 0);
+  }
+}
+
+.animate-wave-drift {
+  will-change: transform;
+  animation: wave-drift var(--wave-duration, 24s) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stardust-star,
+  .particle-joining,
+  .animate-wave-drift {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 body[data-work-modal-open="1"] [data-site-navbar="1"] {
@@ -57,4 +127,28 @@ body[data-work-modal-open="1"] [data-site-navbar="1"] {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Marquee animation */
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
 }

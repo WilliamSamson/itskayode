@@ -17,7 +17,7 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
             {/* Premium Project Hero */}
             <section className="relative pt-12">
                 <motion.div
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={false}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                     className="relative z-10"
@@ -59,7 +59,7 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
                 {/* Context & Description */}
                 <section className="relative group">
                     <motion.div
-                        initial={{ opacity: 0 }}
+                        initial={false}
                         whileInView={{ opacity: 1 }}
                         viewport={{ once: true }}
                         className="space-y-8"
@@ -83,7 +83,7 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
                     ].map((item, i) => (
                         <motion.div
                             key={item.label}
-                            initial={{ opacity: 0, y: 20 }}
+                            initial={false}
                             whileInView={{ opacity: 1, y: 0 }}
                             viewport={{ once: true }}
                             transition={{ delay: i * 0.1 }}
@@ -107,7 +107,7 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
                 {/* Tech Stack Display */}
                 <section className="space-y-8">
                     <motion.div
-                        initial={{ opacity: 0 }}
+                        initial={false}
                         whileInView={{ opacity: 1 }}
                         viewport={{ once: true }}
                         className="space-y-8"
@@ -120,7 +120,7 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
                             {project.stack.map((tech, i) => (
                                 <motion.span
                                     key={tech}
-                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    initial={false}
                                     whileInView={{ opacity: 1, scale: 1 }}
                                     viewport={{ once: true }}
                                     transition={{ delay: i * 0.05 }}
@@ -144,7 +144,7 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
                             {project.screenshots.map((image, idx) => (
                                 <motion.figure
                                     key={`${image}-${idx}`}
-                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    initial={false}
                                     whileInView={{ opacity: 1, scale: 1 }}
                                     viewport={{ once: true }}
                                     className="relative aspect-video rounded-3xl overflow-hidden border border-white/5 group"

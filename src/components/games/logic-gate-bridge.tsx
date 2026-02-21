@@ -209,7 +209,7 @@ export function LogicGateBridge({ onSuccess }: LogicGateBridgeProps) {
             </div>
 
             {/* Breadboard Grid */}
-            <div className="relative p-4 md:p-10 bg-white/[0.02] border border-white/5 rounded-[1.5rem] md:rounded-[2.5rem] overflow-x-auto no-scrollbar">
+            <div className="scrollbar-hide relative overflow-x-auto rounded-[1.5rem] border border-white/5 bg-white/[0.02] p-4 md:rounded-[2.5rem] md:p-10">
                 <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:20px_20px] md:bg-[size:30px_30px] pointer-events-none" />
 
                 <div className="flex items-center gap-6 md:gap-12 relative z-10 min-w-[500px] md:min-w-0">
@@ -313,7 +313,7 @@ export function LogicGateBridge({ onSuccess }: LogicGateBridgeProps) {
 
             {/* Toolbar */}
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-6">
-                <div className="flex gap-2 md:gap-4 overflow-x-auto no-scrollbar pb-2 md:pb-0">
+                <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-2 md:gap-4 md:pb-0">
                     {level.allowedGates.map((gate) => (
                         <button
                             key={gate}
