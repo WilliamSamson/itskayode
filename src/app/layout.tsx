@@ -3,7 +3,8 @@ import "./globals.css";
 import { siteContent } from "@/content/site";
 import { Footer } from "@/components/footer";
 import { Navbar } from "@/components/navbar";
-import { HardNavigation } from "@/components/hard-navigation";
+import { RouteTransition } from "@/components/route-transition";
+import { TelemetryTracker } from "@/components/telemetry-tracker";
 
 const sansStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 const headingStack = 'Outfit, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -11,8 +12,8 @@ const headingStack = 'Outfit, "Inter", -apple-system, BlinkMacSystemFont, "Segoe
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://itskayode.web.app"),
   title: {
-    default: siteContent.siteTitle,
-    template: "%s | Kayode Olalere"
+    default: `${siteContent.fullName} | ${siteContent.siteTitle}`,
+    template: `%s | ${siteContent.fullName}`
   },
   description: siteContent.description,
   openGraph: {
@@ -47,7 +48,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark h-full">
+    <html lang="en" className="h-full">
       <body
         suppressHydrationWarning
         className="bg-bg font-sans text-text antialiased relative h-full flex flex-col"
@@ -62,7 +63,8 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        <HardNavigation />
+        <RouteTransition />
+        <TelemetryTracker />
         <Navbar />
         <main id="main-content" className="container relative z-10 flex-1 py-12 sm:py-16">
           {children}

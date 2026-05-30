@@ -44,7 +44,6 @@ export interface Project {
   featured: boolean;
   githubUrl?: string;
   liveUrl?: string;
-  screenshots: string[];
 }
 
 export interface ExperienceItem {
@@ -69,7 +68,6 @@ export interface SiteContent {
   role: string;
   tagline: string;
   location: string;
-  email: string;
   phone: string;
   siteTitle: string;
   description: string;

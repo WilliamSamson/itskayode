@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ProjectCard } from "@/components/project-card";
 import type { Project, ProjectCategory } from "@/types/content";
@@ -26,8 +25,13 @@ export function ProjectsFilter({ projects }: ProjectsFilterProps) {
   }, [activeFilter, projects]);
 
   return (
-    <section aria-label="Project list">
-      <div role="tablist" aria-label="Project categories" className="mb-12 flex flex-wrap gap-3">
+    <section aria-label="Project list" className="space-y-12">
+      {/* Segmented modular tab control */}
+      <div
+        role="tablist"
+        aria-label="Project categories"
+        className="inline-flex flex-wrap gap-1.5 rounded-lg border border-border/60 bg-surface/30 p-1 sm:p-1.5"
+      >
         {filters.map((filter) => {
           const active = filter === activeFilter;
           return (
@@ -38,28 +42,25 @@ export function ProjectsFilter({ projects }: ProjectsFilterProps) {
               aria-selected={active}
               onClick={() => setActiveFilter(filter)}
               className={cn(
-                "relative py-3 px-8 text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-300",
-                "border border-white/5",
+                "focus-ring rounded-md px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-200 select-none outline-none",
                 active
-                  ? "bg-primary text-black border-primary scale-105"
-                  : "bg-white/[0.01] text-white/40 hover:text-white hover:border-white/20"
+                  ? "bg-text text-bg shadow-sm"
+                  : "text-text/45 hover:text-text hover:bg-surface/50"
               )}
             >
               {filter}
-              {active && (
-                <motion.div
-                  layoutId="filter-accent"
-                  className="absolute -bottom-1 left-0 right-0 h-[2px] bg-primary"
-                />
-              )}
             </button>
           );
         })}
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        {filteredProjects.map((project) => (
-          <ProjectCard key={project.slug} project={project} />
+      {/* Grid container with page transition entry */}
+      <div
+        key={activeFilter}
+        className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 page-transition"
+      >
+        {filteredProjects.map((project, index) => (
+          <ProjectCard key={project.slug} project={project} index={index} />
         ))}
       </div>
     </section>

@@ -25,13 +25,13 @@ export function FormField({
 }: FormFieldProps) {
   const id = `field-${name}`;
   const commonClasses = cn(
-    "focus-ring w-full rounded-sm border bg-black px-4 py-3 text-sm text-text placeholder:text-text/45 transition-colors duration-200",
-    error ? "border-primary" : "border-white/15 hover:border-white/25"
+    "focus-ring w-full rounded-sm border bg-surface px-4 py-3 text-sm text-text placeholder:text-text/45 transition-colors duration-200",
+    error ? "border-text" : "border-border hover:border-text/30"
   );
 
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="text-[10px] font-black uppercase tracking-[0.14em] text-white/75">
+      <label htmlFor={id} className="text-[10px] font-black uppercase tracking-[0.14em] text-text/75">
         {label}
       </label>
       {multiline ? (

@@ -6,15 +6,14 @@ export const siteContent: SiteContent = {
   role: "Full-Stack Developer | Mechatronics & Robotics Engineer | Systems Architect",
   tagline: "High Agency • Systems-Driven • R&D Fluent",
   location: "Abuja, Nigeria",
-  email: "williamsamson036@gmail.com",
   phone: process.env.NEXT_PUBLIC_PHONE_NUMBER ?? "",
-  siteTitle: "Kayode Olalere — Multidisciplinary Engineer",
+  siteTitle: "Software Meets Hardware",
   description:
     "Portfolio of Kayode Williams Olalere, a Full-Stack Developer, Mechatronics and Robotics Engineer, and Systems Architect building at the intersection of bits and atoms.",
   shortBio:
-    "Execution-focused Mobile Developer and Mechatronics Engineer with a strong foundation in innovative technology research, automation, and systems architecture.",
+    "Mobile developer and mechatronics engineer working across software products, robotics, and automation.",
   longBio:
-    "I operate with strategic logic, high agency, and strong R&D fluency. My foundation spans mobile development, mechatronics, and robotics, allowing me to bridge the gap between complex software systems and physical automation. From engineering research-grade encryption prototypes to teaching robotics fundamentals at Afrelib Academy and Innov8 Hub, I am driven by a passion for continuous learning and technological innovation.",
+    "My work spans mobile development, mechatronics, and robotics, with a focus on software that supports physical systems. I have built encryption and automation prototypes and taught robotics fundamentals at Afrelib Academy and Innov8 Hub.",
   cta: [
     { label: "View Works", href: "/projects" },
     { label: "Let's Talk", href: "/#contacts" }
@@ -23,13 +22,11 @@ export const siteContent: SiteContent = {
     { label: "Home", href: "/" },
     { label: "Projects", href: "/projects" },
     { label: "About Me", href: "/about" },
-    { label: "Contact Me", href: "/contact" },
-    { label: "Fun", href: "/fun" }
+    { label: "Contact Me", href: "/contact" }
   ],
   socials: [
     { label: "GitHub", href: "https://github.com/WilliamSamson" },
-    { label: "LinkedIn", href: "https://www.linkedin.com/in/kayode-williams-olalere-b68b09250/" },
-    { label: "Email", href: "mailto:williamsamson036@gmail.com" }
+    { label: "LinkedIn", href: "https://www.linkedin.com/in/kayode-williams-olalere-b68b09250/" }
   ],
   highlights: [
     { title: "Background", value: "Mechatronics & Soft Dev" },

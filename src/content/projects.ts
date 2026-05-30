@@ -2,26 +2,6 @@ import type { Project } from "@/types/content";
 
 export const projects: Project[] = [
   {
-    slug: "itskayode-portfolio",
-    title: "itskayode Portfolio",
-    category: "Web",
-    shortDescription:
-      "Personal portfolio platform built with Next.js for showcasing work, experience, and technical direction.",
-    description:
-      "A production-focused portfolio codebase with structured content models, performance-minded UI, and deploy-ready architecture.",
-    problem:
-      "Needed a central portfolio that could communicate technical depth, execution quality, and product direction in one place.",
-    solution:
-      "Built a modular Next.js and TypeScript portfolio with reusable components, data-driven sections, and clear case-study pages.",
-    impact:
-      "Established a single source of truth for professional profile, project history, and outreach-ready web presence.",
-    stack: ["Next.js", "TypeScript", "Tailwind CSS", "Framer Motion", "Node.js"],
-    role: "Owner and Full-Stack Developer",
-    timeline: "2026 - Present",
-    featured: true,
-    screenshots: ["/images/project-01.svg"]
-  },
-  {
     slug: "acauide-web",
     title: "acauide_web",
     category: "Web",
@@ -39,7 +19,7 @@ export const projects: Project[] = [
     role: "Full-Stack Developer",
     timeline: "2026 - Present",
     featured: true,
-    screenshots: ["/images/project-02.svg"]
+    liveUrl: "https://acauideco.web.app/"
   },
   {
     slug: "ws-tech-venture-studio",
@@ -59,7 +39,7 @@ export const projects: Project[] = [
     role: "Founder and Technical Lead",
     timeline: "2026 - Present",
     featured: true,
-    screenshots: ["/images/project-03.svg"]
+    liveUrl: "https://ws-tech-studio.web.app/"
   },
   {
     slug: "cds-cognitive-decision-sandbox",
@@ -79,7 +59,27 @@ export const projects: Project[] = [
     role: "Systems Architect and Product Engineer",
     timeline: "2026",
     featured: true,
-    screenshots: ["/images/project-08.svg"]
+    liveUrl: "https://ws-tech-studio.web.app/experiments/cds"
+  },
+  {
+    slug: "harmoniq",
+    title: "Harmoniq",
+    category: "Web",
+    shortDescription:
+      "Premium audio experience and venture project for music analytics and telemetry.",
+    description:
+      "A technology platform focused on musical workflows, telemetry analysis, and sound visualization. Part of the WS Tech Venture Studio portfolio.",
+    problem:
+      "Developing high-fidelity audio platforms requires seamless client telemetry, precise playback coordination, and scalable web delivery.",
+    solution:
+      "Designed and engineered a modular Next.js application equipped with advanced audio telemetry capture and responsive controls.",
+    impact:
+      "Created a production-ready baseline for audio-focused web solutions with structured state patterns and optimized asset loading.",
+    stack: ["Next.js", "TypeScript", "Tailwind CSS", "Firebase"],
+    role: "Full-Stack Developer & Systems Engineer",
+    timeline: "2026 - Present",
+    featured: true,
+    liveUrl: "https://ws-tech-studio.web.app/ventures/harmoniq"
   },
   {
     slug: "chaos-core-pendulum-entropy",
@@ -98,28 +98,7 @@ export const projects: Project[] = [
     stack: ["Next.js", "TypeScript", "Canvas", "Node.js", "Cryptography"],
     role: "Research Engineer",
     timeline: "2026",
-    featured: true,
-    screenshots: ["/images/project-04.svg"]
-  },
-  {
-    slug: "medswift-emergencynet",
-    title: "Medswift-EmergencyNet",
-    category: "Backend",
-    shortDescription:
-      "Emergency response product stack for care coordination, reliability, and fast operational visibility.",
-    description:
-      "A high-availability application platform tailored to emergency-care scenarios and response coordination.",
-    problem:
-      "Emergency operations require fast, consistent information flow and dependable system behavior under time pressure.",
-    solution:
-      "Developed a robust app framework with structured APIs, reliable state handling, and clear service boundaries for emergency workflows.",
-    impact:
-      "Improved response coordination readiness and established a stronger technical base for mission-critical product features.",
-    stack: ["Next.js", "TypeScript", "Node.js", "Firebase", "REST APIs"],
-    role: "Technical Developer",
-    timeline: "2026 - Present",
-    featured: true,
-    screenshots: ["/images/project-04.svg"]
+    featured: true
   },
   {
     slug: "neuroforge-cognitive-engine",
@@ -138,28 +117,7 @@ export const projects: Project[] = [
     stack: ["Python", "FastAPI", "Uvicorn", "Redis", "Celery", "TypeScript"],
     role: "Systems Architect and AI Engineer",
     timeline: "2026 - Present",
-    featured: true,
-    screenshots: ["/images/project-05.svg"]
-  },
-  {
-    slug: "acauide-flutter-app",
-    title: "acauide (Flutter)",
-    category: "Mobile",
-    shortDescription:
-      "Comprehensive student study guide mobile application with analytics and integrated platform services.",
-    description:
-      "A cross-platform mobile study app built for Android, iOS, and web with analytics and platform integrations.",
-    problem:
-      "Students needed a consistent mobile-first learning companion with structured content, messaging, and progress support.",
-    solution:
-      "Implemented a Flutter app architecture with Firebase services, provider-driven state flow, and scalable feature modules.",
-    impact:
-      "Delivered a unified mobile learning experience and improved product readiness across multiple platforms.",
-    stack: ["Flutter", "Dart", "Firebase Core", "Cloud Firestore", "Provider"],
-    role: "Mobile Developer",
-    timeline: "2026 - Present",
-    featured: true,
-    screenshots: ["/images/project-06.svg"]
+    featured: true
   },
   {
     slug: "echo-v2-flutter",
@@ -178,7 +136,6 @@ export const projects: Project[] = [
     stack: ["Flutter", "Dart", "go_router"],
     role: "Mobile Developer",
     timeline: "2026",
-    featured: true,
-    screenshots: ["/images/project-07.svg"]
+    featured: true
   }
 ];

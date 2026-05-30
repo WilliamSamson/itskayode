@@ -8,7 +8,34 @@
         "**/.*",
         "**/node_modules/**"
       ],
-      "cleanUrls": true
+      "cleanUrls": true,
+      "redirects": [
+        {
+          "source": "/cv/kayode-olalere-cv.pdf",
+          "destination": "/cv",
+          "type": 302
+        },
+        {
+          "source": "/fun{,/**}",
+          "destination": "/",
+          "type": 301
+        },
+        {
+          "source": "/projects/acauide-flutter-app{,/**}",
+          "destination": "/projects",
+          "type": 301
+        },
+        {
+          "source": "/projects/itskayode-portfolio{,/**}",
+          "destination": "/projects",
+          "type": 301
+        },
+        {
+          "source": "/projects/medswift-emergencynet{,/**}",
+          "destination": "/projects",
+          "type": 301
+        }
+      ]
     },
     {
       "site": "xritskayode",

@@ -22,12 +22,12 @@ type ButtonAsLink = CommonProps & {
 function getVariantClasses(variant: ButtonVariant) {
   switch (variant) {
     case "secondary":
-      return "border-border/30 bg-transparent text-white hover:border-white hover:bg-white hover:text-black";
+      return "border-border bg-transparent text-text hover:border-text hover:bg-text hover:text-bg";
     case "ghost":
       return "bg-transparent border-transparent text-text hover:bg-surface";
     case "primary":
     default:
-      return "border-accent-red bg-accent-red text-white hover:bg-transparent hover:text-white";
+      return "border-primary bg-primary text-bg hover:bg-transparent hover:text-text";
   }
 }
 

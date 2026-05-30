@@ -15,7 +15,7 @@ Production-ready personal portfolio built with Next.js App Router, TypeScript, a
 - TypeScript (strict)
 - Tailwind CSS with tokenized design system
 - Framer Motion (subtle transitions)
-- Client-side contact form (mailto handoff)
+- Client-side contact form (Web3Forms delivery)
 - ESLint + Prettier
 - next-sitemap
 - Vitest
@@ -50,6 +50,7 @@ Required:
 
 - `NEXT_PUBLIC_SITE_URL`
 - `NEXT_PUBLIC_PHONE_NUMBER`
+- `NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY`
 - `NEXT_PUBLIC_FIREBASE_API_KEY`
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
 - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
@@ -63,8 +64,8 @@ Firebase env values are mapped in `src/lib/firebase-config.ts` for client integr
 ## Contact Form (Client Side)
 
 - Validation: name, email, message length.
-- Delivery: opens the user's email client using `mailto:`.
-- UI states: idle, success, error (no toasts).
+- Delivery: posts to Web3Forms using `NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY` and a honeypot field.
+- UI states: idle, sending, success, error (no toasts).
 
 ## Design Tokens
 
@@ -100,5 +101,4 @@ This generates:
 
 ## Notes
 
-- The CV download path currently points to `public/cv/kayode-olalere-cv.pdf` (placeholder file included).
-- Project screenshots in `public/images` are placeholders and should be replaced with real assets.
+- The `/cv` page accepts private resume requests through the contact form; no resume PDF is published.

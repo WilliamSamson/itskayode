@@ -1,9 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Kayode Olalere Portfolio">
-  <rect width="1200" height="630" fill="#070707"/>
-  <rect x="72" y="72" width="1056" height="486" fill="#0e0e10" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="2"/>
-  <rect x="72" y="72" width="18" height="486" fill="#540E10"/>
-  <rect x="1110" y="72" width="18" height="486" fill="#540E10"/>
-  <text x="140" y="290" fill="#FFFFFF" font-family="'Segoe UI', sans-serif" font-size="64" font-weight="700">Kayode Olalere</text>
-  <text x="140" y="355" fill="#FFFFFF" fill-opacity="0.78" font-family="'Segoe UI', sans-serif" font-size="34">Builder | Engineer | Founder</text>
-  <text x="140" y="415" fill="#FFFFFF" fill-opacity="0.6" font-family="'Courier New', monospace" font-size="24">kayode-portfolio</text>
+  <rect width="1200" height="630" fill="#FFFFFF"/>
+  <rect x="50" y="50" width="1100" height="530" fill="#F8F8F8" stroke="#0F0F0F" stroke-width="2"/>
+
+  <!-- Monogram Brand Mark in Top-Left inside border -->
+  <g transform="translate(100, 110)">
+    <rect x="0" y="0" width="60" height="60" fill="none" stroke="#0F0F0F" stroke-width="3"/>
+    <path d="M 18 16 L 18 44 M 18 30 L 30 16 M 18 30 L 30 44" fill="none" stroke="#0F0F0F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="42" cy="30" r="7" fill="none" stroke="#0F0F0F" stroke-width="4"/>
+  </g>
+
+  <!-- Text content -->
+  <text x="100" y="320" fill="#0F0F0F" font-family="'Segoe UI', sans-serif" font-size="72" font-weight="900" letter-spacing="-0.04em">KAYODE OLALERE</text>
+  <text x="100" y="390" fill="#555555" font-family="'Segoe UI', sans-serif" font-size="28" font-weight="600" letter-spacing="0.1em">SYSTEMS ARCHITECT | MECHATRONICS ENGINEER</text>
+  <text x="100" y="470" fill="#999999" font-family="'Courier New', monospace" font-size="22" font-weight="700" letter-spacing="0.05em">itskayode.web.app</text>
 </svg>

@@ -1,227 +1,264 @@
 "use client";
 
-import Image from "next/image";
+import { useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
 import type { Project } from "@/types/content";
 
 interface ProjectDetailClientProps {
-    project: Project;
-    nextProject: Project | undefined;
+  project: Project;
+  nextProject: Project | undefined;
 }
 
 export function ProjectDetailClient({ project, nextProject }: ProjectDetailClientProps) {
-    return (
-        <div className="space-y-24 pb-32">
-            {/* Premium Project Hero */}
-            <section className="relative pt-12">
-                <motion.div
-                    initial={false}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                    className="relative z-10"
-                >
-                    <div className="flex flex-col gap-6">
-                        <div className="flex items-center gap-4">
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">{project.category}</span>
-                            <div className="h-[1px] w-12 bg-white/10" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30">{project.timeline}</span>
-                        </div>
+  const [iframeLoading, setIframeLoading] = useState(true);
 
-                        <h1 className="text-4xl md:text-7xl lg:text-8xl font-heading font-black text-white tracking-tighter uppercase leading-[0.85]">
-                            {project.title.split(' ').map((word, i) => (
-                                <span key={i} className={i % 2 === 1 ? "text-primary italic font-light lowercase" : "block"}>
-                                    {word}
-                                </span>
-                            ))}
-                        </h1>
+  return (
+    <article className="pb-20 pt-4 sm:pb-24 sm:pt-8">
+      {/* Back Link */}
+      <Link
+        href="/projects"
+        className="focus-ring group inline-flex items-center gap-2 border-b border-transparent pb-1 text-xs font-black uppercase tracking-[0.2em] text-text/40 transition-colors hover:text-text"
+      >
+        <span className="transition-transform duration-300 group-hover:-translate-x-1">←</span>
+        <span>Back to Work</span>
+      </Link>
 
-                        <div className="flex flex-wrap gap-3 mt-4">
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30">Lead Role</span>
-                                <span className="text-sm font-bold text-white uppercase tracking-widest">{project.role}</span>
-                            </div>
-                        </div>
-                    </div>
-                </motion.div>
+      {/* Dashboard Header */}
+      <header className="mt-10 border-b border-border pb-12 sm:mt-14 sm:pb-16 md:mt-16">
+        <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr] lg:gap-14">
+          {/* Main Title Block */}
+          <div className="space-y-6">
+            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-text/40">
+              {`// WORK / SOURCE / ${project.category.toUpperCase()}`}
+            </span>
+            <h1 className="max-w-4xl text-4xl font-heading font-black uppercase tracking-tighter leading-[0.85] text-text sm:text-6xl md:text-7xl lg:text-8xl">
+              {project.title}
+            </h1>
+            <p className="max-w-2xl text-base leading-relaxed text-text/60 sm:text-lg md:text-xl font-medium">
+              {project.shortDescription}
+            </p>
+          </div>
 
-                {/* Decorative Tiered Lines (Hero) */}
-                <div className="absolute top-0 right-0 flex flex-col items-end gap-1 opacity-20 pointer-events-none">
-                    <div className="h-[1px] w-32 bg-primary/40" />
-                    <div className="h-[1px] w-20 bg-primary" />
-                    <div className="h-[1px] w-48 bg-primary/20" />
+          {/* Metadata Sidebar Panel */}
+          <div className="rounded-xl border border-border bg-surface/30 p-6 space-y-6 flex flex-col justify-between">
+            <div className="space-y-5">
+              {/* Role */}
+              <div className="space-y-1.5">
+                <span className="font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text/40">
+                  Role Scope
+                </span>
+                <p className="text-xs font-bold uppercase tracking-wider text-text">
+                  {project.role}
+                </p>
+              </div>
+
+              {/* Timeline */}
+              <div className="space-y-1.5">
+                <span className="font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text/40">
+                  Timeline
+                </span>
+                <p className="text-xs font-bold uppercase tracking-wider text-text">
+                  {project.timeline}
+                </p>
+              </div>
+
+              {/* Technical Tools */}
+              <div className="space-y-2">
+                <span className="font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text/40">
+                  System Tools
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {project.stack.map((tech) => (
+                    <span
+                      key={tech}
+                      className="rounded-sm border border-border bg-bg/40 px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-text/50"
+                    >
+                      {tech}
+                    </span>
+                  ))}
                 </div>
-            </section>
-
-            {/* Insight Feed Layout */}
-            <div className="space-y-24">
-                {/* Context & Description */}
-                <section className="relative group">
-                    <motion.div
-                        initial={false}
-                        whileInView={{ opacity: 1 }}
-                        viewport={{ once: true }}
-                        className="space-y-8"
-                    >
-                        <div className="flex items-center gap-6">
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">01 // Context</span>
-                            <div className="h-px bg-white/5 flex-1" />
-                        </div>
-                        <p className="text-xl md:text-3xl font-heading font-medium text-text/70 leading-tight max-w-4xl tracking-tight">
-                            {project.description}
-                        </p>
-                    </motion.div>
-                </section>
-
-                {/* Insights Grid */}
-                <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {[
-                        { label: "The Problem", content: project.problem, color: "text-white/60" },
-                        { label: "The Solution", content: project.solution, color: "text-primary/80 italic font-light" },
-                        { label: "The Impact", content: project.impact, color: "text-white/80 font-black uppercase tracking-tight" }
-                    ].map((item, i) => (
-                        <motion.div
-                            key={item.label}
-                            initial={false}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ delay: i * 0.1 }}
-                            className="relative group p-8 rounded-3xl bg-white/[0.02] border border-white/5 hover:border-primary/20 transition-all flex flex-col min-h-[240px]"
-                        >
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 mb-6 group-hover:text-primary transition-colors">
-                                {item.label}
-                            </p>
-                            <p className={cn("text-base md:text-lg leading-relaxed flex-1", item.color)}>
-                                {item.content}
-                            </p>
-
-                            {/* Decorative Accent */}
-                            <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <div className="w-6 h-[1px] bg-primary/40" />
-                            </div>
-                        </motion.div>
-                    ))}
-                </section>
-
-                {/* Tech Stack Display */}
-                <section className="space-y-8">
-                    <motion.div
-                        initial={false}
-                        whileInView={{ opacity: 1 }}
-                        viewport={{ once: true }}
-                        className="space-y-8"
-                    >
-                        <div className="flex items-center gap-6">
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">02 // Stack</span>
-                            <div className="h-px bg-white/5 flex-1" />
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                            {project.stack.map((tech, i) => (
-                                <motion.span
-                                    key={tech}
-                                    initial={false}
-                                    whileInView={{ opacity: 1, scale: 1 }}
-                                    viewport={{ once: true }}
-                                    transition={{ delay: i * 0.05 }}
-                                    className="px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest text-white/50 border border-white/5 bg-white/[0.01] hover:border-primary/30 hover:text-white transition-all cursor-default"
-                                >
-                                    {tech}
-                                </motion.span>
-                            ))}
-                        </div>
-                    </motion.div>
-                </section>
-
-                {/* visual assets / screenshots */}
-                {project.screenshots && project.screenshots.length > 0 && (
-                    <section className="space-y-12">
-                        <div className="flex items-center gap-6">
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">03 // Visuals</span>
-                            <div className="h-px bg-white/5 flex-1" />
-                        </div>
-                        <div className="grid gap-8 sm:grid-cols-2">
-                            {project.screenshots.map((image, idx) => (
-                                <motion.figure
-                                    key={`${image}-${idx}`}
-                                    initial={false}
-                                    whileInView={{ opacity: 1, scale: 1 }}
-                                    viewport={{ once: true }}
-                                    className="relative aspect-video rounded-3xl overflow-hidden border border-white/5 group"
-                                >
-                                    <Image
-                                        src={image}
-                                        alt={`${project.title} screenshot ${idx + 1}`}
-                                        fill
-                                        className="object-cover transition-transform duration-700 group-hover:scale-105"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-8">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-white/70">
-                                            Module {idx + 1} - Interface Detail
-                                        </span>
-                                    </div>
-                                </motion.figure>
-                            ))}
-                        </div>
-                    </section>
-                )}
-
-                {/* CTAs & Links */}
-                <section className="flex flex-col sm:flex-row items-center justify-between gap-8 py-16 border-y border-white/5">
-                    <div className="flex gap-12">
-                        {project.githubUrl && (
-                            <Link
-                                href={project.githubUrl}
-                                target="_blank"
-                                className="group flex flex-col gap-2"
-                            >
-                                <span className="text-[10px] font-black uppercase tracking-widest text-white/30 group-hover:text-primary transition-colors">Repository</span>
-                                <span className="text-sm font-bold text-white hover:underline underline-offset-8">Browse Source →</span>
-                            </Link>
-                        )}
-                        {project.liveUrl && (
-                            <Link
-                                href={project.liveUrl}
-                                target="_blank"
-                                className="group flex flex-col gap-2"
-                            >
-                                <span className="text-[10px] font-black uppercase tracking-widest text-white/30 group-hover:text-primary transition-colors">Production</span>
-                                <span className="text-sm font-bold text-white hover:underline underline-offset-8">View Live Project →</span>
-                            </Link>
-                        )}
-                    </div>
-
-                    <Link
-                        href={`/?talk=1&project=${project.slug}#contacts`}
-                        className="w-full sm:w-auto py-5 px-12 bg-primary text-black font-black text-xs uppercase tracking-[0.3em] transition-all hover:scale-105 active:scale-95 text-center"
-                    >
-                        Discuss Execution
-                    </Link>
-                </section>
-
-                {/* Next Project Expansion */}
-                {nextProject && (
-                    <section className="pt-24">
-                        <Link
-                            href={`/projects/${nextProject.slug}`}
-                            className="group relative block p-12 md:p-24 rounded-[3rem] bg-white/[0.02] border border-white/5 overflow-hidden transition-all hover:border-primary/30"
-                        >
-                            <div className="relative z-10 flex flex-col items-center text-center gap-8">
-                                <span className="text-[10px] font-black uppercase tracking-[0.6em] text-primary">Up Next</span>
-                                <h3 className="text-3xl md:text-7xl font-heading font-black text-white uppercase tracking-tighter leading-none group-hover:scale-105 transition-transform duration-500">
-                                    {nextProject.title}
-                                </h3>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-white/30 group-hover:text-white transition-colors duration-300">
-                                    Execute Transition →
-                                </span>
-                            </div>
-
-                            {/* Animated decorative element */}
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] aspect-square bg-primary/5 rounded-full blur-[120px] opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-                        </Link>
-                    </section>
-                )}
+              </div>
             </div>
+          </div>
         </div>
-    );
+      </header>
+
+      {/* Full-width Overview Callout */}
+      <section className="border-b border-border py-12 sm:py-16">
+        <div className="grid gap-8 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12">
+          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-text/50">
+            Overview
+          </h2>
+          <p className="max-w-3xl text-lg leading-8 text-text/75 sm:text-xl sm:leading-9 pl-6 border-l border-border/80 font-medium italic">
+            {project.description}
+          </p>
+        </div>
+      </section>
+
+      {/* Interactive Live Demo / Sandbox */}
+      {project.liveUrl ? (
+        <section className="border-b border-border py-12 sm:py-16">
+          <div className="grid gap-8 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12">
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-text/50">
+                Live Sandbox
+              </h2>
+              <p className="mt-3 text-xs leading-5 text-text/40">
+                Interact with the application directly inside this frame, or launch it in a new window.
+              </p>
+            </div>
+            <div className="w-full">
+              <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+                {/* Browser window header */}
+                <div className="flex items-center justify-between border-b border-border/80 bg-surface/50 px-4 py-3 select-none">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-border" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-border" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-border" />
+                  </div>
+                  <div className="mx-4 flex-1 max-w-md rounded bg-bg px-3 py-1 text-center font-mono text-[9px] text-text/45 truncate">
+                    {project.liveUrl}
+                  </div>
+                  <div className="w-[30px]" />
+                </div>
+                {/* Iframe container */}
+                <div className="relative w-full aspect-[16/10] bg-bg min-h-[300px] sm:min-h-[450px]">
+                  {iframeLoading && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface/50 backdrop-blur-[1px] transition-opacity duration-300">
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-text border-t-transparent" />
+                      <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-text/40">
+                        Connecting to sandbox...
+                      </span>
+                    </div>
+                  )}
+                  <iframe
+                    src={project.liveUrl}
+                    title={`${project.title} Live Preview`}
+                    className="h-full w-full border-0 bg-transparent"
+                    onLoad={() => setIframeLoading(false)}
+                    loading="lazy"
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Case Study Cards Deck */}
+      <section aria-label="Case study" className="border-b border-border py-12 sm:py-16">
+        <div className="grid gap-8 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12">
+          <div>
+            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-text/50">
+              Case Study
+            </h2>
+            <p className="mt-3 text-xs leading-5 text-text/40">
+              Technical break-down of the challenge, implementation approach, and project outcomes.
+            </p>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-3">
+            {/* Challenge Card */}
+            <div className="group rounded-xl border border-border/80 bg-surface/20 p-6 space-y-4 hover:border-text/25 hover:bg-surface/30 transition-all duration-300">
+              <span className="font-mono text-[9px] font-bold tracking-[0.18em] text-text/35 uppercase">
+                {"// 01 . challenge"}
+              </span>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-text">
+                The Problem
+              </h3>
+              <p className="text-xs leading-relaxed text-text/60">
+                {project.problem}
+              </p>
+            </div>
+
+            {/* Approach Card */}
+            <div className="group rounded-xl border border-border/80 bg-surface/20 p-6 space-y-4 hover:border-text/25 hover:bg-surface/30 transition-all duration-300">
+              <span className="font-mono text-[9px] font-bold tracking-[0.18em] text-text/35 uppercase">
+                {"// 02 . approach"}
+              </span>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-text">
+                The Solution
+              </h3>
+              <p className="text-xs leading-relaxed text-text/60">
+                {project.solution}
+              </p>
+            </div>
+
+            {/* Outcome Card */}
+            <div className="group rounded-xl border border-border/80 bg-surface/20 p-6 space-y-4 hover:border-text/25 hover:bg-surface/30 transition-all duration-300">
+              <span className="font-mono text-[9px] font-bold tracking-[0.18em] text-text/35 uppercase">
+                {"// 03 . outcome"}
+              </span>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-text">
+                The Impact
+              </h3>
+              <p className="text-xs leading-relaxed text-text/60">
+                {project.impact}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Styled Action Buttons Row */}
+      <section className="flex flex-wrap items-center justify-between gap-6 border-b border-border py-12">
+        <div className="flex flex-wrap gap-4">
+          {project.liveUrl ? (
+            <Link
+              href={project.liveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="focus-ring inline-flex items-center gap-2 rounded bg-text px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-bg hover:bg-text/80 transition-colors"
+            >
+              <span>Launch App</span>
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </Link>
+          ) : null}
+          {project.githubUrl ? (
+            <Link
+              href={project.githubUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="focus-ring inline-flex items-center gap-2 rounded border border-border bg-surface px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-text hover:bg-surface/85 hover:border-text/25 transition-all"
+            >
+              <span>View Source</span>
+            </Link>
+          ) : null}
+        </div>
+
+        <Link
+          href="/contact"
+          className="focus-ring group/contact inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-text hover:text-text/70 transition-colors"
+        >
+          <span>Discuss Project</span>
+          <span className="transition-transform group-hover/contact:translate-x-1">→</span>
+        </Link>
+      </section>
+
+      {/* Premium Next Project Card Block */}
+      {nextProject ? (
+        <section className="pt-16">
+          <Link
+            href={`/projects/${nextProject.slug}`}
+            className="focus-ring group relative block overflow-hidden rounded-xl border border-border/80 bg-surface/30 p-8 sm:p-10 hover:border-text/25 hover:bg-surface/50 transition-all duration-300"
+          >
+            <span className="font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text/40">
+              Up Next
+            </span>
+            <div className="mt-4 flex flex-col justify-between items-start gap-4 sm:flex-row sm:items-end">
+              <h3 className="text-2xl sm:text-4xl font-heading font-black uppercase tracking-tight text-text group-hover:text-text/70 transition-colors">
+                {nextProject.title}
+              </h3>
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.25em] text-text/50 group-hover:text-text transition-colors">
+                <span>View Case Study</span>
+                <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+              </span>
+            </div>
+          </Link>
+        </section>
+      ) : null}
+    </article>
+  );
 }

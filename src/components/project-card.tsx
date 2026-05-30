@@ -1,93 +1,90 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import { type Project } from "@/types/content";
-import { WorkInsightModal } from "@/components/work-insight-modal";
+import type { Project } from "@/types/content";
 
 interface ProjectCardProps {
   project: Project;
+  index?: number;
 }
 
-export function ProjectCard({ project }: ProjectCardProps) {
-  const [isInsightOpen, setIsInsightOpen] = useState(false);
+export function ProjectCard({ project, index = 0 }: ProjectCardProps) {
+  const isLive = !!project.liveUrl;
 
   return (
-    <>
-      <div className="group relative flex flex-col border-premium bg-white/[0.01] p-6 md:p-10 transition-all hover:bg-white/[0.03] hover:translate-y-[-4px]">
-        {project.screenshots?.[0] && (
-          <div className="relative mb-6 md:mb-8 w-full overflow-hidden border border-white/10 aspect-[16/9] bg-[#050505]">
-            <Image
-              src={project.screenshots[0]}
-              alt={`${project.title} preview`}
-              fill
-              className="object-cover transition-all duration-700 group-hover:scale-105 opacity-60 group-hover:opacity-100 mix-blend-luminosity hover:mix-blend-normal"
-            />
-            {/* Subtle overlay to blend image into background */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
-          </div>
-        )}
-        <div className="flex-1 space-y-4 md:space-y-6">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">
-              /{project.category || "project"}
-            </span>
-            <div className="flex gap-2">
-              <div className="h-1 w-4 bg-white/10" />
+    <article className="group relative flex flex-col justify-between rounded-lg border border-border/60 bg-surface/30 p-6 hover:bg-surface/50 transition-all duration-300 min-h-[320px]">
+      {/* Active outline overlay */}
+      <div className="absolute inset-0 rounded-lg border border-transparent transition-all duration-300 group-hover:border-text/20 group-hover:scale-[1.01] pointer-events-none" />
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border/40 pb-3">
+          <span className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-text/40">
+            {`// 0${index + 1} . src / ${project.category.toLowerCase()}`}
+          </span>
+          {isLive && (
+            <div className="flex items-center gap-1.5 font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text/50">
+              <span className="h-1.5 w-1.5 rounded-full bg-text/70" />
+              <span>Active</span>
             </div>
-          </div>
-          <h3 className="text-2xl md:text-3xl font-heading font-black text-white leading-[1.1] tracking-tighter uppercase">
-            {project.title}
+          )}
+        </div>
+
+        {/* Title & Role */}
+        <div className="space-y-1">
+          <h3 className="text-xl font-heading font-black uppercase tracking-tight text-text transition-colors group-hover:text-text/70 sm:text-2xl">
+            <Link
+              href={`/projects/${project.slug}`}
+              className="focus-ring block outline-none"
+            >
+              {project.title}
+            </Link>
           </h3>
-          <p className="text-base text-text/40 leading-relaxed font-medium tracking-tight">
-            {project.shortDescription}
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-text/45">
+            {project.role}
           </p>
         </div>
 
-        <div className="mt-10 space-y-6">
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {project.stack.slice(0, 3).map((tech: string) => (
-              <span key={tech} className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                {tech}
-              </span>
-            ))}
-          </div>
-          <div className="flex items-center gap-6">
-            <button
-              type="button"
-              onClick={() => setIsInsightOpen(true)}
-              className="text-xs font-bold text-white hover:text-primary transition-colors flex items-center gap-2 group/btn"
+        {/* Description */}
+        <p className="text-xs leading-relaxed text-text/60 line-clamp-3">
+          {project.shortDescription}
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-5">
+        {/* Tech Stack */}
+        <div className="flex flex-wrap gap-1">
+          {project.stack.slice(0, 4).map((tech) => (
+            <span
+              key={tech}
+              className="rounded-sm border border-border/60 bg-bg/40 px-2 py-1 font-mono text-[8px] font-semibold uppercase tracking-wider text-text/50 transition-colors group-hover:border-border group-hover:text-text/75"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square">
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.3-4.3" />
-              </svg>
-              Quick Look <span className="text-[10px] transition-transform group-hover/btn:translate-x-1">→</span>
-            </button>
-            <Link
-              href={project.liveUrl || `/projects/${project.slug}`}
-              className="text-xs font-bold text-text/60 hover:text-white transition-colors"
-            >
-              View Project
-            </Link>
-            {project.githubUrl ? (
-              <Link
-                href={project.githubUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-bold text-text/40 hover:text-white transition-colors"
-              >
-                Source
-              </Link>
-            ) : null}
-          </div>
+              {tech}
+            </span>
+          ))}
         </div>
 
-        {/* Modern Gradient Overlay on Hover */}
-        <div className="absolute inset-0 border border-white/0 transition-all group-hover:border-white/10 pointer-events-none" />
+        {/* Footer Actions */}
+        <div className="flex items-center justify-between border-t border-border/40 pt-4 text-[10px] font-black uppercase tracking-[0.2em]">
+          <Link
+            href={`/projects/${project.slug}`}
+            className="group/link focus-ring inline-flex items-center gap-1.5 text-text transition-all hover:text-text/60"
+          >
+            <span>Case Study</span>
+            <span className="transition-transform duration-300 group-hover/link:translate-x-1">→</span>
+          </Link>
+          {isLive && (
+            <Link
+              href={project.liveUrl!}
+              target="_blank"
+              rel="noreferrer"
+              className="focus-ring inline-flex items-center gap-1 text-text/40 transition-colors hover:text-text"
+            >
+              <span>Launch</span>
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </Link>
+          )}
+        </div>
       </div>
-      <WorkInsightModal project={project} isOpen={isInsightOpen} onClose={() => setIsInsightOpen(false)} />
-    </>
+    </article>
   );
 }
