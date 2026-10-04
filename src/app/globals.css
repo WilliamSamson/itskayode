@@ -5,10 +5,93 @@
 :root {
   --bg: 255 255 255;
   --surface: 248 248 248;
+  --elevated: 242 242 244;
+  --elevated-hover: 235 235 238;
+  --canvas: 250 250 252;
   --text: 15 15 15;
-  --primary: 15 15 15;
+  --primary: 37 99 235;
+  --accent-blue: 37 99 235;
+  --accent-orange: 249 115 22;
+  --accent-violet: 124 58 237;
+  --accent-green: 5 150 105;
+  --accent-red: 220 38 38;
+  --copper: 184 115 51;
+  --copper-hover: 161 98 42;
   --border: 225 225 225;
+  --border-subtle: 235 235 237;
+  --border-strong: 200 200 204;
   color: rgb(var(--text));
+}
+
+body {
+  background-color: rgb(var(--bg));
+  background-image:
+    radial-gradient(circle at 12% 8%, rgb(var(--accent-blue) / 0.08), transparent 24rem),
+    radial-gradient(circle at 88% 14%, rgb(var(--accent-orange) / 0.07), transparent 22rem),
+    radial-gradient(circle at 50% 55%, rgb(var(--accent-violet) / 0.035), transparent 30rem);
+  background-attachment: fixed;
+}
+
+@keyframes color-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate3d(0, -18px, 0) scale(1.06);
+  }
+}
+
+.color-orb {
+  animation: color-float var(--float-duration, 9s) ease-in-out infinite;
+  filter: blur(2px);
+  will-change: transform;
+}
+
+.color-marquee {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--accent-blue)),
+    rgb(var(--accent-violet)),
+    rgb(var(--accent-orange)),
+    rgb(var(--accent-green))
+  );
+  background-clip: text;
+  color: transparent;
+}
+
+.contact-landscape {
+  background-color: #bdf0c0;
+  background-image:
+    radial-gradient(circle, rgb(8 55 42 / 0.22) 0.8px, transparent 0.9px),
+    linear-gradient(150deg, #d8f5c5 0%, #8edda9 48%, #52b994 100%);
+  background-size: 4px 4px, 100% 100%;
+}
+
+.contact-sun {
+  background: rgb(251 239 169 / 0.72);
+  box-shadow: 0 0 80px rgb(251 239 169 / 0.6);
+}
+
+.contact-hill {
+  display: block;
+  filter: saturate(0.9);
+}
+
+.contact-hill-back {
+  background: #3f9f82;
+  transform: rotate(10deg);
+}
+
+.contact-hill-mid {
+  background: #207c68;
+  transform: rotate(-7deg);
+}
+
+.contact-hill-front {
+  background: #125649;
+  transform: rotate(14deg);
 }
 
 @keyframes stardust-twinkle {
@@ -96,6 +179,11 @@
   .stardust-star,
   .particle-joining,
   .animate-wave-drift,
+  .animate-marquee,
+  .animate-morph,
+  .neural-node,
+  .color-orb,
+  .motion-morph,
   .page-transition,
   .page-loading-line::after {
     animation-duration: 0.001ms !important;

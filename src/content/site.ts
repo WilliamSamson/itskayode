@@ -3,15 +3,15 @@ import type { SiteContent } from "@/types/content";
 export const siteContent: SiteContent = {
   name: "Kayode Olalere",
   fullName: "Kayode Williams Olalere",
-  role: "Full-Stack Developer | Mechatronics & Robotics Engineer | Systems Architect",
-  tagline: "High Agency • Systems-Driven • R&D Fluent",
+  role: "Systems Engineer for Software, Robotics, and Automation",
+  tagline: "Software systems for connected hardware",
   location: "Abuja, Nigeria",
   phone: process.env.NEXT_PUBLIC_PHONE_NUMBER ?? "",
   siteTitle: "Software Meets Hardware",
   description:
-    "Portfolio of Kayode Williams Olalere, a Full-Stack Developer, Mechatronics and Robotics Engineer, and Systems Architect building at the intersection of bits and atoms.",
+    "Portfolio of Kayode Williams Olalere, a systems engineer building full-stack software for robotics, automation, and connected hardware.",
   shortBio:
-    "Mobile developer and mechatronics engineer working across software products, robotics, and automation.",
+    "I design and build full-stack software that operates, measures, and improves physical systems.",
   longBio:
     "My work spans mobile development, mechatronics, and robotics, with a focus on software that supports physical systems. I have built encryption and automation prototypes and taught robotics fundamentals at Afrelib Academy and Innov8 Hub.",
   cta: [
@@ -21,12 +21,15 @@ export const siteContent: SiteContent = {
   nav: [
     { label: "Home", href: "/" },
     { label: "Projects", href: "/projects" },
+    { label: "ORRA", href: "/orra" },
+    { label: "Research", href: "/writing" },
     { label: "About Me", href: "/about" },
     { label: "Contact Me", href: "/contact" }
   ],
   socials: [
     { label: "GitHub", href: "https://github.com/WilliamSamson" },
-    { label: "LinkedIn", href: "https://www.linkedin.com/in/kayode-williams-olalere-b68b09250/" }
+    { label: "LinkedIn", href: "https://www.linkedin.com/in/kayode-williams-olalere-b68b09250/" },
+    { label: "Instagram", href: "https://www.instagram.com/buildwithkayode" }
   ],
   highlights: [
     { title: "Background", value: "Mechatronics & Soft Dev" },

@@ -5,7 +5,26 @@ export function getFeaturedProjects() {
 }
 
 export function getHomeProjects(limit = 4) {
-  return getFeaturedProjects().slice(0, limit);
+  const homeProjectSlugs = [
+    "harmoniq",
+    "ws-tech-venture-studio",
+    "orbit-mobile-automation",
+    "magma-terminal-workspace"
+  ];
+
+  return homeProjectSlugs
+    .map((slug) => projects.find((project) => project.slug === slug))
+    .filter((project): project is (typeof projects)[number] => Boolean(project))
+    .slice(0, limit);
+}
+
+export function getPortfolioMetrics() {
+  return [
+    { label: "Selected builds", value: projects.length },
+    { label: "Live products", value: projects.filter((project) => project.liveUrl).length },
+    { label: "Engineering domains", value: new Set(projects.map((project) => project.category)).size },
+    { label: "Technologies used", value: new Set(projects.flatMap((project) => project.stack)).size }
+  ];
 }
 
 export function getProjectBySlug(slug: string) {

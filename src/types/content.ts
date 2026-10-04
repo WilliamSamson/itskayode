@@ -1,4 +1,10 @@
-export type ProjectCategory = "Web" | "Mobile" | "Backend" | "AI";
+export type ProjectCategory = "Web" | "Mobile" | "Backend" | "AI" | "Desktop";
+export type ProjectVisualKind = "terminal" | "architecture" | "automation" | "mystery" | "planner";
+
+export interface ProjectVisual {
+  src: string;
+  alt: string;
+}
 
 export interface SiteLink {
   label: string;
@@ -44,6 +50,10 @@ export interface Project {
   featured: boolean;
   githubUrl?: string;
   liveUrl?: string;
+  coverImage?: string;
+  coverAlt?: string;
+  visualKind?: ProjectVisualKind;
+  gallery?: ProjectVisual[];
 }
 
 export interface ExperienceItem {
@@ -59,7 +69,20 @@ export interface WritingItem {
   title: string;
   summary: string;
   publishedAt: string;
-  href: string;
+  status: "published" | "scheduled";
+  kind?: "research" | "note";
+  topics: string[];
+  authors?: string[];
+  primaryAuthor?: string;
+  venue?: string;
+  volume?: string;
+  pages?: string;
+  doi?: string;
+  externalUrl?: string;
+  sections?: {
+    heading: string;
+    paragraphs: string[];
+  }[];
 }
 
 export interface SiteContent {

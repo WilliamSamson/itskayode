@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { ProjectVisual } from "@/components/project-visual";
 import type { Project } from "@/types/content";
 
 interface ProjectDetailClientProps {
@@ -11,104 +13,173 @@ interface ProjectDetailClientProps {
 
 export function ProjectDetailClient({ project, nextProject }: ProjectDetailClientProps) {
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [activeVisual, setActiveVisual] = useState<{ src: string; alt: string } | null>(null);
+  const categoryTone = {
+    Web: "bg-accent-blue/10",
+    Mobile: "bg-accent-green/10",
+    Backend: "bg-accent-orange/10",
+    AI: "bg-accent-violet/10",
+    Desktop: "bg-surface"
+  }[project.category];
+
+  useEffect(() => {
+    if (!activeVisual) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveVisual(null);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeVisual]);
 
   return (
     <article className="pb-20 pt-4 sm:pb-24 sm:pt-8">
-      {/* Back Link */}
       <Link
         href="/projects"
-        className="focus-ring group inline-flex items-center gap-2 border-b border-transparent pb-1 text-xs font-black uppercase tracking-[0.2em] text-text/40 transition-colors hover:text-text"
+        className="focus-ring group inline-flex items-center gap-2 rounded-md bg-surface px-4 py-2 text-[11px] font-semibold text-text/55 transition-colors hover:text-text"
       >
         <span className="transition-transform duration-300 group-hover:-translate-x-1">←</span>
-        <span>Back to Work</span>
+        <span>Back to projects</span>
       </Link>
 
-      {/* Dashboard Header */}
-      <header className="mt-10 border-b border-border pb-12 sm:mt-14 sm:pb-16 md:mt-16">
-        <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr] lg:gap-14">
-          {/* Main Title Block */}
-          <div className="space-y-6">
-            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-text/40">
-              {`// WORK / SOURCE / ${project.category.toUpperCase()}`}
+      <header className={`relative mt-8 overflow-hidden rounded-xl p-6 sm:mt-10 sm:p-10 lg:p-14 ${categoryTone}`}>
+        <span className="absolute -right-10 -top-12 h-44 w-44 rounded-full border-[28px] border-border-subtle" />
+        <span className="absolute -bottom-20 left-[42%] h-48 w-48 rounded-full border-[34px] border-border-subtle" />
+        <div className="relative grid gap-10 lg:grid-cols-[minmax(0,1.35fr)_minmax(17rem,0.65fr)] lg:items-end">
+          <div className="space-y-7">
+            <span className="text-[11px] font-semibold text-text/40">
+              {project.category}
             </span>
-            <h1 className="max-w-4xl text-4xl font-heading font-black uppercase tracking-tighter leading-[0.85] text-text sm:text-6xl md:text-7xl lg:text-8xl">
+            <h1 className="max-w-4xl font-heading text-[15px] font-semibold leading-[0.85] tracking-tighter text-text">
               {project.title}
             </h1>
-            <p className="max-w-2xl text-base leading-relaxed text-text/60 sm:text-lg md:text-xl font-medium">
+            <p className="max-w-2xl text-[13px] font-semibold leading-relaxed text-text/65">
               {project.shortDescription}
             </p>
           </div>
 
-          {/* Metadata Sidebar Panel */}
-          <div className="rounded-xl border border-border bg-surface/30 p-6 space-y-6 flex flex-col justify-between">
-            <div className="space-y-5">
-              {/* Role */}
-              <div className="space-y-1.5">
-                <span className="font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text/40">
-                  Role Scope
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-bg/65 p-2 backdrop-blur-md">
+            {[
+              ["Contribution", "Solo"],
+              ["Timeline", project.timeline],
+              ["Role", project.role],
+              ["Discipline", project.category]
+            ].map(([label, value], index) => (
+              <div
+                key={label}
+                className={`rounded-xl bg-bg/80 p-4 ${index === 2 ? "col-span-2" : ""}`}
+              >
+                <span className="text-[11px] text-text/35">
+                  {label}
                 </span>
-                <p className="text-xs font-bold uppercase tracking-wider text-text">
-                  {project.role}
+                <p className="mt-1 text-[13px] font-semibold leading-snug text-text">
+                  {value}
                 </p>
               </div>
-
-              {/* Timeline */}
-              <div className="space-y-1.5">
-                <span className="font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text/40">
-                  Timeline
+            ))}
+            <div className="col-span-2 flex flex-wrap gap-1.5 px-2 pb-2 pt-1">
+              {project.stack.map((tech) => (
+                <span
+                  key={tech}
+                  className="rounded-md bg-text/[0.07] px-2.5 py-1 text-[11px] text-text/55"
+                >
+                  {tech}
                 </span>
-                <p className="text-xs font-bold uppercase tracking-wider text-text">
-                  {project.timeline}
-                </p>
-              </div>
-
-              {/* Technical Tools */}
-              <div className="space-y-2">
-                <span className="font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text/40">
-                  System Tools
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {project.stack.map((tech) => (
-                    <span
-                      key={tech}
-                      className="rounded-sm border border-border bg-bg/40 px-2 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wider text-text/50"
-                    >
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
       </header>
 
-      {/* Full-width Overview Callout */}
-      <section className="border-b border-border py-12 sm:py-16">
-        <div className="grid gap-8 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12">
-          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-text/50">
-            Overview
-          </h2>
-          <p className="max-w-3xl text-lg leading-8 text-text/75 sm:text-xl sm:leading-9 pl-6 border-l border-border/80 font-medium italic">
+      {(project.coverImage || project.visualKind) && (
+        <section aria-label={`${project.title} visuals`} className="py-12 sm:py-16">
+          {project.coverImage ? (
+            <button
+              type="button"
+              onClick={() =>
+                setActiveVisual({
+                  src: project.coverImage!,
+                  alt: project.coverAlt ?? `${project.title} interface`
+                })
+              }
+              className="focus-ring group/visual relative block w-full cursor-zoom-in overflow-hidden rounded-xl text-left shadow-[0_24px_80px_rgb(15_15_15_/_0.12)]"
+              aria-label={`View ${project.coverAlt ?? `${project.title} interface`} full size`}
+            >
+              <ProjectVisual
+                project={project}
+                priority
+                className="aspect-[16/9] w-full rounded-xl"
+              />
+              <span className="absolute bottom-4 right-4 rounded-md bg-text/70 px-3 py-2 text-[11px] font-semibold text-bg opacity-0 backdrop-blur transition-opacity group-hover/visual:opacity-100 group-focus-visible/visual:opacity-100">
+                View full size
+              </span>
+            </button>
+          ) : (
+            <ProjectVisual
+              project={project}
+              priority
+              className="aspect-[16/9] w-full rounded-xl shadow-[0_24px_80px_rgb(15_15_15_/_0.12)]"
+            />
+          )}
+          {project.gallery && project.gallery.length > 1 ? (
+            <div className="mt-5 grid gap-5 md:grid-cols-2">
+              {project.gallery.slice(1).map((visual) => (
+                <button
+                  key={visual.src}
+                  type="button"
+                  onClick={() => setActiveVisual(visual)}
+                  className="focus-ring group/visual relative aspect-[16/10] cursor-zoom-in overflow-hidden rounded-xl bg-surface text-left"
+                  aria-label={`View ${visual.alt} full size`}
+                >
+                  <Image
+                    src={visual.src}
+                    alt={visual.alt}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="object-contain transition-transform duration-500 group-hover/visual:scale-[1.02]"
+                  />
+                  <span className="absolute bottom-3 right-3 rounded-md bg-text/70 px-3 py-2 text-[11px] font-semibold text-bg opacity-0 backdrop-blur transition-opacity group-hover/visual:opacity-100 group-focus-visible/visual:opacity-100">
+                    View full size
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      )}
+
+      <section className="rounded-xl bg-text p-7 text-bg sm:p-10">
+        <div className="grid gap-6 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12">
+          <h2 className="text-[11px] font-semibold text-bg/50">Overview</h2>
+          <p className="max-w-3xl text-[13px] font-semibold leading-8 text-bg/80">
             {project.description}
           </p>
         </div>
       </section>
 
-      {/* Interactive Live Demo / Sandbox */}
       {project.liveUrl ? (
-        <section className="border-b border-border py-12 sm:py-16">
+        <section className="py-12 sm:py-16">
           <div className="grid gap-8 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12">
             <div>
-              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-text/50">
-                Live Sandbox
+              <h2 className="text-[11px] font-semibold text-text/50">
+                Live preview
               </h2>
-              <p className="mt-3 text-xs leading-5 text-text/40">
+              <p className="mt-3 text-[11px] leading-5 text-text/40">
                 Interact with the application directly inside this frame, or launch it in a new window.
               </p>
             </div>
             <div className="w-full">
-              <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+              <div className="overflow-hidden rounded-xl border border-border bg-surface">
                 {/* Browser window header */}
                 <div className="flex items-center justify-between border-b border-border/80 bg-surface/50 px-4 py-3 select-none">
                   <div className="flex items-center gap-1.5">
@@ -116,7 +187,7 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
                     <span className="h-2.5 w-2.5 rounded-full bg-border" />
                     <span className="h-2.5 w-2.5 rounded-full bg-border" />
                   </div>
-                  <div className="mx-4 flex-1 max-w-md rounded bg-bg px-3 py-1 text-center font-mono text-[9px] text-text/45 truncate">
+                  <div className="mx-4 flex-1 max-w-md rounded-md bg-bg px-3 py-1 text-center text-[11px] text-text/45 truncate">
                     {project.liveUrl}
                   </div>
                   <div className="w-[30px]" />
@@ -126,8 +197,8 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
                   {iframeLoading && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface/50 backdrop-blur-[1px] transition-opacity duration-300">
                       <div className="h-5 w-5 animate-spin rounded-full border-2 border-text border-t-transparent" />
-                      <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-text/40">
-                        Connecting to sandbox...
+                      <span className="text-[11px] text-text/40">
+                        Loading preview
                       </span>
                     </div>
                   )}
@@ -146,53 +217,49 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
         </section>
       ) : null}
 
-      {/* Case Study Cards Deck */}
-      <section aria-label="Case study" className="border-b border-border py-12 sm:py-16">
-        <div className="grid gap-8 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12">
+      <section aria-label="Case study" className="py-12 sm:py-16">
+        <div className="grid gap-8">
           <div>
-            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-text/50">
-              Case Study
+            <h2 className="text-[11px] font-semibold text-text/50">
+              Case study
             </h2>
-            <p className="mt-3 text-xs leading-5 text-text/40">
-              Technical break-down of the challenge, implementation approach, and project outcomes.
+            <p className="mt-3 max-w-xl text-[11px] leading-5 text-text/40">
+              Technical breakdown of the challenge, implementation approach, and project outcomes.
             </p>
           </div>
           <div className="grid gap-6 sm:grid-cols-3">
-            {/* Challenge Card */}
-            <div className="group rounded-xl border border-border/80 bg-surface/20 p-6 space-y-4 hover:border-text/25 hover:bg-surface/30 transition-all duration-300">
-              <span className="font-mono text-[9px] font-bold tracking-[0.18em] text-text/35 uppercase">
-                {"// 01 . challenge"}
+            <div className="group space-y-4 rounded-xl bg-accent-blue/10 p-6 transition-transform duration-300 hover:-translate-y-1 sm:p-7">
+              <span className="text-[11px] text-text/35">
+                01 — Challenge
               </span>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-text">
-                The Problem
+              <h3 className="text-[13px] font-semibold text-text">
+                The problem
               </h3>
-              <p className="text-xs leading-relaxed text-text/60">
+              <p className="text-[13px] leading-relaxed text-text/60">
                 {project.problem}
               </p>
             </div>
 
-            {/* Approach Card */}
-            <div className="group rounded-xl border border-border/80 bg-surface/20 p-6 space-y-4 hover:border-text/25 hover:bg-surface/30 transition-all duration-300">
-              <span className="font-mono text-[9px] font-bold tracking-[0.18em] text-text/35 uppercase">
-                {"// 02 . approach"}
+            <div className="group space-y-4 rounded-xl bg-accent-green/10 p-6 transition-transform duration-300 hover:-translate-y-1 sm:p-7">
+              <span className="text-[11px] text-text/35">
+                02 — Approach
               </span>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-text">
-                The Solution
+              <h3 className="text-[13px] font-semibold text-text">
+                The solution
               </h3>
-              <p className="text-xs leading-relaxed text-text/60">
+              <p className="text-[13px] leading-relaxed text-text/60">
                 {project.solution}
               </p>
             </div>
 
-            {/* Outcome Card */}
-            <div className="group rounded-xl border border-border/80 bg-surface/20 p-6 space-y-4 hover:border-text/25 hover:bg-surface/30 transition-all duration-300">
-              <span className="font-mono text-[9px] font-bold tracking-[0.18em] text-text/35 uppercase">
-                {"// 03 . outcome"}
+            <div className="group space-y-4 rounded-xl bg-accent-orange/10 p-6 transition-transform duration-300 hover:-translate-y-1 sm:p-7">
+              <span className="text-[11px] text-text/35">
+                03 — Outcome
               </span>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-text">
-                The Impact
+              <h3 className="text-[13px] font-semibold text-text">
+                The impact
               </h3>
-              <p className="text-xs leading-relaxed text-text/60">
+              <p className="text-[13px] leading-relaxed text-text/60">
                 {project.impact}
               </p>
             </div>
@@ -200,17 +267,16 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
         </div>
       </section>
 
-      {/* Styled Action Buttons Row */}
-      <section className="flex flex-wrap items-center justify-between gap-6 border-b border-border py-12">
+      <section className="flex flex-wrap items-center justify-between gap-6 rounded-xl bg-surface p-6 sm:p-8">
         <div className="flex flex-wrap gap-4">
           {project.liveUrl ? (
             <Link
               href={project.liveUrl}
               target="_blank"
               rel="noreferrer"
-              className="focus-ring inline-flex items-center gap-2 rounded bg-text px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-bg hover:bg-text/80 transition-colors"
+              className="focus-ring inline-flex items-center gap-2 rounded-md bg-text px-6 py-3.5 text-[13px] font-semibold text-bg hover:bg-text/80 transition-colors"
             >
-              <span>Launch App</span>
+              <span>Launch app</span>
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
@@ -221,43 +287,74 @@ export function ProjectDetailClient({ project, nextProject }: ProjectDetailClien
               href={project.githubUrl}
               target="_blank"
               rel="noreferrer"
-              className="focus-ring inline-flex items-center gap-2 rounded border border-border bg-surface px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-text hover:bg-surface/85 hover:border-text/25 transition-all"
+              className="focus-ring inline-flex items-center gap-2 rounded-md border border-border bg-surface px-6 py-3.5 text-[13px] font-semibold text-text hover:bg-surface/85 hover:border-text/25 transition-all"
             >
-              <span>View Source</span>
+              <span>View source</span>
             </Link>
           ) : null}
         </div>
 
         <Link
           href="/contact"
-          className="focus-ring group/contact inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-text hover:text-text/70 transition-colors"
+          className="focus-ring group/contact inline-flex items-center gap-2 text-[13px] font-semibold text-text hover:text-text/70 transition-colors"
         >
-          <span>Discuss Project</span>
+          <span>Discuss project</span>
           <span className="transition-transform group-hover/contact:translate-x-1">→</span>
         </Link>
       </section>
 
-      {/* Premium Next Project Card Block */}
       {nextProject ? (
         <section className="pt-16">
           <Link
             href={`/projects/${nextProject.slug}`}
-            className="focus-ring group relative block overflow-hidden rounded-xl border border-border/80 bg-surface/30 p-8 sm:p-10 hover:border-text/25 hover:bg-surface/50 transition-all duration-300"
+            className="focus-ring group relative block overflow-hidden rounded-xl bg-accent-violet/10 p-8 transition-all duration-300 hover:-translate-y-1 sm:p-10"
           >
-            <span className="font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text/40">
-              Up Next
+            <span className="text-[11px] font-semibold text-text/40">
+              Up next
             </span>
             <div className="mt-4 flex flex-col justify-between items-start gap-4 sm:flex-row sm:items-end">
-              <h3 className="text-2xl sm:text-4xl font-heading font-black uppercase tracking-tight text-text group-hover:text-text/70 transition-colors">
+              <h3 className="text-[15px] font-heading font-semibold tracking-tight text-text group-hover:text-text/70 transition-colors">
                 {nextProject.title}
               </h3>
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.25em] text-text/50 group-hover:text-text transition-colors">
-                <span>View Case Study</span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-text/50 group-hover:text-text transition-colors">
+                <span>View case study</span>
                 <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
               </span>
             </div>
           </Link>
         </section>
+      ) : null}
+
+      {activeVisual ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full-size project image"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-text/90 p-3 backdrop-blur-sm sm:p-8"
+          onClick={() => setActiveVisual(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveVisual(null)}
+            className="focus-ring absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-bg text-[15px] font-semibold text-text sm:right-7 sm:top-7"
+            aria-label="Close full-size image"
+          >
+            ×
+          </button>
+          <div
+            className="relative h-full max-h-[90vh] w-full max-w-[96rem]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Image
+              src={activeVisual.src}
+              alt={activeVisual.alt}
+              fill
+              sizes="100vw"
+              className="object-contain"
+              priority
+            />
+          </div>
+        </div>
       ) : null}
     </article>
   );

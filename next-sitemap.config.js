@@ -4,18 +4,26 @@ module.exports = {
   generateRobotsTxt: true,
   changefreq: "weekly",
   sitemapSize: 7000,
+  robotsTxtOptions: {
+    policies: [
+      {
+        userAgent: "*",
+        allow: "/",
+        disallow: ["/api/"]
+      }
+    ]
+  },
   transform: async (config, path) => {
     let priority = 0.7;
     let changefreq = "weekly";
 
-    // Set precise priority and frequency values depending on the page route
     if (path === "/" || path === "") {
       priority = 1.0;
       changefreq = "daily";
-    } else if (path === "/about/" || path === "/projects/" || path === "/contact/") {
+    } else if (path === "/about/" || path === "/projects/" || path === "/contact/" || path === "/writing/") {
       priority = 0.9;
       changefreq = "weekly";
-    } else if (path.startsWith("/projects/")) {
+    } else if (path.startsWith("/projects/") || path.startsWith("/writing/")) {
       priority = 0.8;
       changefreq = "monthly";
     } else if (path === "/cv/") {

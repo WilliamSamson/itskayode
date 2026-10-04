@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ProjectVisual } from "@/components/project-visual";
 import type { Project } from "@/types/content";
 
 interface ProjectCardProps {
@@ -8,83 +9,96 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project, index = 0 }: ProjectCardProps) {
   const isLive = !!project.liveUrl;
+  const categoryStyles = {
+    Web: "border-accent-blue/30 bg-accent-blue/10",
+    Mobile: "border-accent-green/30 bg-accent-green/10",
+    Backend: "border-accent-orange/30 bg-accent-orange/10",
+    AI: "border-accent-violet/30 bg-accent-violet/10",
+    Desktop: "border-text/20 bg-surface"
+  };
+  const categoryText = {
+    Web: "text-accent-blue",
+    Mobile: "text-accent-green",
+    Backend: "text-accent-orange",
+    AI: "text-accent-violet",
+    Desktop: "text-text"
+  };
+  const categoryDecor = {
+    Web: "bg-accent-blue",
+    Mobile: "bg-accent-green",
+    Backend: "bg-accent-orange",
+    AI: "bg-accent-violet",
+    Desktop: "bg-text"
+  };
+  const rotations = [
+    "md:-rotate-[1.25deg]",
+    "md:rotate-[0.8deg]",
+    "md:-rotate-[0.6deg]",
+    "md:rotate-[1.1deg]"
+  ];
 
   return (
-    <article className="group relative flex flex-col justify-between rounded-lg border border-border/60 bg-surface/30 p-6 hover:bg-surface/50 transition-all duration-300 min-h-[320px]">
-      {/* Active outline overlay */}
-      <div className="absolute inset-0 rounded-lg border border-transparent transition-all duration-300 group-hover:border-text/20 group-hover:scale-[1.01] pointer-events-none" />
-      <div className="space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/40 pb-3">
-          <span className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-text/40">
-            {`// 0${index + 1} . src / ${project.category.toLowerCase()}`}
-          </span>
-          {isLive && (
-            <div className="flex items-center gap-1.5 font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text/50">
-              <span className="h-1.5 w-1.5 rounded-full bg-text/70" />
-              <span>Active</span>
-            </div>
+    <article
+      className={`group relative mx-auto w-full max-w-[22rem] rounded-xl border p-1.5 pb-8 shadow-[0_12px_30px_rgb(76_61_122_/_0.1)] transition-all duration-300 hover:z-10 hover:rotate-0 hover:-translate-y-2 hover:shadow-[0_24px_60px_rgb(76_61_122_/_0.18)] sm:p-2 sm:pb-11 ${categoryStyles[project.category]} ${rotations[index % rotations.length]}`}
+    >
+      <div className="relative z-10 flex min-h-[190px] flex-col justify-between rounded-xl border border-border-subtle bg-bg p-3 sm:min-h-[245px] sm:p-5">
+        <div className="space-y-3 sm:space-y-4">
+          {(project.coverImage || project.visualKind) && (
+            <ProjectVisual project={project} className="aspect-[16/9] w-full" />
           )}
+          <span aria-hidden className={`block h-1 w-10 rounded-full sm:w-12 ${categoryDecor[project.category]}`} />
+
+          <div className="space-y-1.5 sm:space-y-2">
+            <h3 className="font-heading text-[13px] font-semibold leading-tight tracking-tight text-text sm:text-[15px]">
+              <Link href={`/projects/${project.slug}`} className="focus-ring block outline-none">
+                {project.title}
+              </Link>
+            </h3>
+            <p className="line-clamp-2 text-[11px] leading-relaxed text-text/55">
+              {project.shortDescription}
+            </p>
+          </div>
         </div>
 
-        {/* Title & Role */}
-        <div className="space-y-1">
-          <h3 className="text-xl font-heading font-black uppercase tracking-tight text-text transition-colors group-hover:text-text/70 sm:text-2xl">
+        <div className="mt-3 space-y-3 sm:mt-5 sm:space-y-4">
+          <div className="flex flex-wrap gap-1.5">
+            {project.stack.slice(0, 3).map((tech, techIndex) => (
+              <span
+                key={tech}
+                className={`rounded-md border border-current/15 px-2 py-1 text-[11px] sm:px-2.5 ${techIndex === 2 ? "hidden sm:inline-flex" : "inline-flex"} ${categoryText[project.category]}`}
+              >
+                {tech}
+              </span>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
             <Link
               href={`/projects/${project.slug}`}
-              className="focus-ring block outline-none"
+              className={`group/link focus-ring inline-flex items-center gap-1 rounded-md border border-current/20 px-2.5 py-1.5 text-[11px] sm:px-3 ${categoryText[project.category]}`}
             >
-              {project.title}
+              <span className="sm:hidden">View</span>
+              <span className="hidden sm:inline">Project details</span>
+              <span className="transition-transform group-hover/link:translate-x-0.5">→</span>
             </Link>
-          </h3>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-text/45">
-            {project.role}
-          </p>
+            {isLive ? (
+              <Link
+                href={project.liveUrl!}
+                target="_blank"
+                rel="noreferrer"
+                className="focus-ring inline-flex items-center gap-1 rounded-md bg-text px-2.5 py-1.5 text-[11px] text-bg transition-colors hover:bg-primary sm:px-3"
+              >
+                <span className="hidden sm:inline">Visit</span>
+                <span aria-hidden>↗</span>
+              </Link>
+            ) : null}
+          </div>
         </div>
-
-        {/* Description */}
-        <p className="text-xs leading-relaxed text-text/60 line-clamp-3">
-          {project.shortDescription}
-        </p>
       </div>
 
-      <div className="mt-6 space-y-5">
-        {/* Tech Stack */}
-        <div className="flex flex-wrap gap-1">
-          {project.stack.slice(0, 4).map((tech) => (
-            <span
-              key={tech}
-              className="rounded-sm border border-border/60 bg-bg/40 px-2 py-1 font-mono text-[8px] font-semibold uppercase tracking-wider text-text/50 transition-colors group-hover:border-border group-hover:text-text/75"
-            >
-              {tech}
-            </span>
-          ))}
-        </div>
-
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between border-t border-border/40 pt-4 text-[10px] font-black uppercase tracking-[0.2em]">
-          <Link
-            href={`/projects/${project.slug}`}
-            className="group/link focus-ring inline-flex items-center gap-1.5 text-text transition-all hover:text-text/60"
-          >
-            <span>Case Study</span>
-            <span className="transition-transform duration-300 group-hover/link:translate-x-1">→</span>
-          </Link>
-          {isLive && (
-            <Link
-              href={project.liveUrl!}
-              target="_blank"
-              rel="noreferrer"
-              className="focus-ring inline-flex items-center gap-1 text-text/40 transition-colors hover:text-text"
-            >
-              <span>Launch</span>
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </Link>
-          )}
-        </div>
-      </div>
+      <p className="absolute inset-x-3 bottom-2.5 truncate text-center text-[11px] text-text/45 sm:inset-x-4 sm:bottom-3">
+        {project.role}
+      </p>
     </article>
   );
 }

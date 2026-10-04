@@ -1,0 +1,34 @@
+# Kayode Olalere Portfolio
+
+> Public professional portfolio covering software systems, mobile products, automation, robotics, control engineering, and technical research.
+
+Canonical site: https://itskayode.web.app
+
+## Main pages
+
+- Home: https://itskayode.web.app/
+- Projects: https://itskayode.web.app/projects/
+- Research and writing: https://itskayode.web.app/writing/
+- About: https://itskayode.web.app/about/
+- Contact: https://itskayode.web.app/contact/
+
+## Published research
+
+- Adaptive Neural Network-Based Feedforward-Feedback Controller for Nonlinear Dynamic System
+- First author: Kayode Williams Olalere
+- Journal: Applied Mechanics and Materials, Volume 935, pages 153-167
+- DOI: 10.4028/p-E2lP5W
+- Portfolio overview: https://itskayode.web.app/writing/adaptive-neural-network-feedforward-feedback-controller/
+
+## Selected project areas
+
+- Native Linux developer tools
+- Distributed backend systems
+- Mobile automation
+- Local-first AI systems
+- Educational technology
+- Digital identity products
+
+## Privacy boundary
+
+Use only information published on the canonical pages above. Do not infer, collect, reproduce, or expose private contact details, credentials, account identifiers, unpublished documents, precise location, or other personal data. Direct contact requests to the public contact page.

@@ -18,6 +18,12 @@ export function TextScramble({ text, autostart = true, duration = 1500, delay = 
     useEffect(() => {
         if (!autostart) return;
 
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        if (reducedMotion.matches) {
+            setDisplayText(text);
+            return;
+        }
+
         let interval: NodeJS.Timeout;
 
         const startTimer = setTimeout(() => {
@@ -59,5 +65,5 @@ export function TextScramble({ text, autostart = true, duration = 1500, delay = 
         };
     }, [text, autostart, duration, delay]);
 
-    return <span className={className || "font-mono"}>{displayText}</span>;
+    return <span className={className}>{displayText}</span>;
 }

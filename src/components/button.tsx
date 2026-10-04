@@ -32,7 +32,7 @@ function getVariantClasses(variant: ButtonVariant) {
 }
 
 const baseClasses =
-  "focus-ring inline-flex h-11 items-center justify-center rounded-sm border-2 px-6 text-sm font-bold uppercase tracking-wider transition-all duration-200 hover:scale-105 active:scale-95";
+  "focus-ring inline-flex h-11 items-center justify-center rounded-md border-2 px-6 text-[13px] font-semibold transition-all duration-200 hover:scale-105 active:scale-95";
 
 export function Button(props: ButtonAsButton | ButtonAsLink) {
   const { variant = "primary", className, children } = props;

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { TextAnimate } from "@/components/magicui/text-animate";
 import { ProjectsFilter } from "@/components/projects-filter";
 import { projects } from "@/content/projects";
-import { TextScramble } from "@/components/text-scramble";
 
 export const metadata: Metadata = {
   title: "Selected Works",
@@ -16,13 +16,18 @@ export const metadata: Metadata = {
 export default function ProjectsPage() {
   return (
     <div className="space-y-14 pb-20 pt-8 sm:space-y-16 sm:pt-12">
-      <header className="max-w-2xl space-y-4">
-        <h1 className="text-4xl font-heading font-black uppercase tracking-tight text-text sm:text-5xl">
-          <TextScramble text="Work" duration={1200} className="font-heading font-black text-text" />
-        </h1>
-        <p className="text-base leading-8 text-text/60 sm:text-lg">
+      <header className="technical-grid max-w-3xl space-y-4 rounded-xl border border-accent-blue/10 bg-accent-blue/[0.025] p-6 sm:p-10">
+        <TextAnimate
+          as="h1"
+          animation="blurIn"
+          by="text"
+          className="font-heading text-[15px] font-semibold tracking-tight text-text"
+        >
+          Work
+        </TextAnimate>
+        <TextAnimate animation="slideUp" by="word" delay={0.15} className="text-[13px] leading-8 text-text/60">
           Selected software, mobile, and engineering projects.
-        </p>
+        </TextAnimate>
       </header>
 
       <ProjectsFilter projects={projects} />

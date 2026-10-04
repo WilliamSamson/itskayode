@@ -25,6 +25,7 @@ interface ContactFormProps {
   submitLabel?: string;
   subject?: string;
   title?: string;
+  variant?: "default" | "dark";
 }
 
 function isValidEmail(value: string) {
@@ -36,7 +37,8 @@ export function ContactForm({
   eyebrow = "Project Brief",
   submitLabel = "Send Message",
   subject = "Portfolio Contact",
-  title = "Send Message"
+  title = "Send Message",
+  variant = "default"
 }: ContactFormProps) {
   const [state, setState] = useState<ContactFormState>(initialContactState);
 
@@ -133,32 +135,64 @@ export function ContactForm({
     <form
       id="contact-form"
       onSubmit={handleSubmit}
-      className="space-y-6 rounded-xl border border-border/80 bg-surface/30 p-6 sm:p-8"
+      className={
+        variant === "dark"
+          ? "space-y-5 bg-transparent"
+          : "space-y-6 rounded-xl border border-border/80 bg-surface/30 p-6 sm:p-8"
+      }
       aria-busy={state.status === "sending"}
       noValidate
     >
-      <div className="flex items-end justify-between gap-4 border-b border-border/40 pb-5">
+      <div
+        className={
+          variant === "dark"
+            ? "space-y-3 pb-2"
+            : "flex items-end justify-between gap-4 border-b border-border/40 pb-5"
+        }
+      >
         <div className="space-y-2">
-          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-text/45">
-            {`// ${eyebrow.toUpperCase()}`}
+          <p
+            className={`text-[11px] font-semibold ${
+              variant === "dark" ? "text-primary-dim" : "text-text/45"
+            }`}
+          >
+            {eyebrow}
           </p>
-          <h2 className="text-xl font-heading font-black uppercase tracking-tight text-text sm:text-2xl">
+          <h2
+            className={`font-heading text-[15px] font-semibold tracking-tight ${
+              variant === "dark" ? "text-text" : "text-text"
+            }`}
+          >
             {title}
           </h2>
+          {variant === "dark" ? (
+            <p className="max-w-md text-[13px] leading-6 text-primary-subtle">
+              Tell me what you are building, where you are stuck, and what a good outcome looks like.
+            </p>
+          ) : null}
         </div>
-        <span className="font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text/35">
-          TLS SECURE
-        </span>
+        {variant === "default" ? (
+          <span className="text-[11px] font-semibold text-text/35">
+            Secure
+          </span>
+        ) : null}
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <FormField label="Name" name="name" placeholder="Your name" error={state.fieldErrors?.name} />
+      <div className={variant === "dark" ? "grid gap-4" : "grid gap-5 sm:grid-cols-2"}>
+        <FormField
+          label="Name"
+          name="name"
+          placeholder="Your name"
+          error={state.fieldErrors?.name}
+          variant={variant}
+        />
         <FormField
           label="Email"
           name="email"
           type="email"
           placeholder="you@example.com"
           error={state.fieldErrors?.email}
+          variant={variant}
         />
       </div>
 
@@ -170,6 +204,7 @@ export function ContactForm({
         rows={7}
         error={state.fieldErrors?.message}
         defaultValue={defaultMessage}
+        variant={variant}
       />
 
       <div className="hidden" aria-hidden="true">
@@ -177,23 +212,45 @@ export function ContactForm({
         <input id="contact-botcheck" type="checkbox" name="botcheck" tabIndex={-1} autoComplete="off" />
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-border/40 pt-5 sm:flex-row sm:items-center sm:justify-between">
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={state.status === "sending"}
-          className="w-full disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[180px]"
-        >
-          {state.status === "sending" ? "Sending..." : submitLabel}
-        </Button>
+      <div
+        className={
+          variant === "dark"
+            ? "flex flex-col gap-3 pt-1"
+            : "flex flex-col gap-3 border-t border-border/40 pt-5 sm:flex-row sm:items-center sm:justify-between"
+        }
+      >
+        {variant === "dark" ? (
+          <button
+            type="submit"
+            disabled={state.status === "sending"}
+            className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-xl bg-bg px-6 text-[13px] font-semibold text-text transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
+          >
+            {state.status === "sending" ? "Sending..." : submitLabel}
+          </button>
+        ) : (
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={state.status === "sending"}
+            className="w-full disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[180px]"
+          >
+            {state.status === "sending" ? "Sending..." : submitLabel}
+          </Button>
+        )}
         {state.status !== "idle" ? (
           <p
-            className={`text-xs font-mono uppercase tracking-wider ${
+            className={`text-[11px] ${
               state.status === "success"
-                ? "text-text/75 font-bold"
+                ? variant === "dark"
+                  ? "font-semibold text-accent-green"
+                  : "font-semibold text-text/75"
                 : state.status === "error"
-                ? "text-text/60"
-                : "text-text/40"
+                  ? variant === "dark"
+                    ? "text-accent-red"
+                    : "text-text/60"
+                  : variant === "dark"
+                    ? "text-primary-dim"
+                    : "text-text/40"
             }`}
             role="status"
             aria-live="polite"

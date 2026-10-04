@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+
+type TelemetryConsent = "loading" | "unknown" | "accepted" | "declined";
+
+const consentStorageKey = "ko_telemetry_consent";
 
 // Generate a random unique ID for anonymous sessions and visitor tracking
 function generateId(length = 16): string {
@@ -16,8 +20,18 @@ function generateId(length = 16): string {
 export function TelemetryTracker() {
   const pathname = usePathname();
   const lastPathname = useRef<string | null>(null);
+  const [consent, setConsent] = useState<TelemetryConsent>("loading");
 
   useEffect(() => {
+    const storedConsent = localStorage.getItem(consentStorageKey);
+    setConsent(storedConsent === "accepted" || storedConsent === "declined" ? storedConsent : "unknown");
+  }, []);
+
+  useEffect(() => {
+    if (consent !== "accepted") {
+      return;
+    }
+
     // Avoid double logging the exact same path within a render cycle
     if (lastPathname.current === pathname) {
       return;
@@ -103,7 +117,42 @@ export function TelemetryTracker() {
         console.warn("[Telemetry Engine] Failed to dispatch payload:", err);
       }
     });
-  }, [pathname]);
+  }, [consent, pathname]);
 
-  return null;
+  const updateConsent = (value: Extract<TelemetryConsent, "accepted" | "declined">) => {
+    localStorage.setItem(consentStorageKey, value);
+    setConsent(value);
+  };
+
+  if (consent !== "unknown") {
+    return null;
+  }
+
+  return (
+    <aside
+      aria-label="Analytics preference"
+      className="fixed bottom-24 left-4 right-4 z-[60] mx-auto max-w-xl rounded-xl border border-border bg-bg p-4 shadow-lg sm:left-auto sm:right-6"
+    >
+      <p className="text-[13px] leading-6 text-text/70">
+        May I collect anonymous visit data such as pages viewed, referrer, language, and screen size to
+        improve this portfolio?
+      </p>
+      <div className="mt-3 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => updateConsent("accepted")}
+          className="focus-ring rounded-md bg-primary px-4 py-2 text-[13px] font-semibold text-bg transition-colors hover:bg-accent-violet"
+        >
+          Allow analytics
+        </button>
+        <button
+          type="button"
+          onClick={() => updateConsent("declined")}
+          className="focus-ring rounded-md border border-border px-4 py-2 text-[13px] font-semibold text-text"
+        >
+          Decline
+        </button>
+      </div>
+    </aside>
+  );
 }

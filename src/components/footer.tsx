@@ -17,7 +17,7 @@ export function Footer() {
           {[...Array(4)].map((_, i) => (
             <span
               key={i}
-              className="text-6xl md:text-8xl font-black font-heading text-text/[0.03] mx-8 select-none uppercase tracking-tighter"
+              className="color-marquee mx-8 select-none font-heading text-6xl font-semibold tracking-tighter opacity-[0.08] md:text-8xl"
             >
               Execution. Systems. Innovation.
             </span>
@@ -26,21 +26,19 @@ export function Footer() {
       </div>
 
       {/* Content */}
-      <div
-        className="container mx-auto"
-      >
+      <div className="w-full px-4 sm:px-5 lg:px-8">
         <div className="flex flex-col justify-between items-center gap-6">
           {/* Copyright */}
           <div className="text-center md:text-left">
-            <p className="text-text/70 text-sm font-medium">
+            <p className="text-text/70 text-[13px] font-semibold">
               © {year} {siteContent.fullName}
             </p>
           </div>
 
           {/* Scope */}
           <div className="text-center">
-            <p className="font-mono text-xs md:text-sm text-text/50 tracking-wider">
-              {siteContent.role} | AI & Robotics
+            <p className="text-[13px] text-text/50">
+              {siteContent.role}
             </p>
           </div>
 
@@ -49,7 +47,7 @@ export function Footer() {
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             className="group flex items-center gap-2 text-text/50 hover:text-text transition-colors duration-300"
           >
-            <span className="text-xs uppercase tracking-[0.1em] font-bold">Back to top</span>
+            <span className="text-[11px] font-semibold">Back to top</span>
             <svg
               className="w-4 h-4 transition-transform duration-300 group-hover:-translate-y-1"
               fill="none"

@@ -1,13 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { siteContent } from "@/content/site";
-import { Footer } from "@/components/footer";
-import { Navbar } from "@/components/navbar";
-import { RouteTransition } from "@/components/route-transition";
-import { TelemetryTracker } from "@/components/telemetry-tracker";
+import { AppShell } from "@/components/app-shell";
 
 const sansStack = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 const headingStack = 'Outfit, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://itskayode.web.app"),
@@ -16,6 +22,11 @@ export const metadata: Metadata = {
     template: `%s | ${siteContent.fullName}`
   },
   description: siteContent.description,
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: siteContent.fullName,
+  },
   openGraph: {
     type: "website",
     title: siteContent.siteTitle,
@@ -38,7 +49,15 @@ export const metadata: Metadata = {
     images: ["/og-image.svg"]
   },
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }]
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-light.png", media: "(prefers-color-scheme: light)", type: "image/png" },
+      { url: "/icon-dark.png", media: "(prefers-color-scheme: dark)", type: "image/png" },
+      { url: "/icon.png", type: "image/png" }
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
+    ]
   }
 };
 
@@ -63,13 +82,7 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        <RouteTransition />
-        <TelemetryTracker />
-        <Navbar />
-        <main id="main-content" className="container relative z-10 flex-1 py-12 sm:py-16">
-          {children}
-        </main>
-        <Footer />
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

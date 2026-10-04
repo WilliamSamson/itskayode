@@ -5,14 +5,16 @@ const config: Config = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}"
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/world/**/*.{js,ts,jsx,tsx,mdx}"
   ],
   theme: {
     container: {
       center: true,
-      padding: "1.25rem",
-      screens: {
-        "2xl": "1120px"
+      padding: {
+        DEFAULT: "1rem",
+        sm: "1.25rem",
+        lg: "2rem"
       }
     },
     extend: {
@@ -28,11 +30,24 @@ const config: Config = {
       colors: {
         bg: "rgb(var(--bg) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
+        elevated: "rgb(var(--elevated) / <alpha-value>)",
+        "elevated-hover": "rgb(var(--elevated-hover) / <alpha-value>)",
+        canvas: "rgb(var(--canvas) / <alpha-value>)",
         text: "rgb(var(--text) / <alpha-value>)",
         primary: "rgb(var(--primary) / <alpha-value>)",
-        accent: "rgb(var(--primary) / <alpha-value>)",
-        "accent-red": "rgb(var(--primary) / <alpha-value>)",
-        border: "rgb(var(--border) / <alpha-value>)"
+        "primary-subtle": "rgb(var(--text) / 0.6)",
+        "primary-dim": "rgb(var(--text) / 0.4)",
+        accent: "rgb(var(--accent-blue) / <alpha-value>)",
+        "accent-blue": "rgb(var(--accent-blue) / <alpha-value>)",
+        "accent-orange": "rgb(var(--accent-orange) / <alpha-value>)",
+        "accent-violet": "rgb(var(--accent-violet) / <alpha-value>)",
+        "accent-green": "rgb(var(--accent-green) / <alpha-value>)",
+        "accent-red": "rgb(var(--accent-red) / <alpha-value>)",
+        copper: "rgb(var(--copper) / <alpha-value>)",
+        "copper-hover": "rgb(var(--copper-hover) / <alpha-value>)",
+        border: "rgb(var(--border) / <alpha-value>)",
+        "border-subtle": "rgb(var(--border-subtle) / <alpha-value>)",
+        "border-strong": "rgb(var(--border-strong) / <alpha-value>)"
       },
       borderRadius: {
         sm: "0.2rem",
@@ -63,6 +78,19 @@ const config: Config = {
         "reverse-spin": {
           from: { transform: "rotate(360deg)" },
           to: { transform: "rotate(0deg)" }
+        },
+        meteor: {
+          "0%": {
+            transform: "rotate(var(--angle)) translateX(0)",
+            opacity: "1"
+          },
+          "70%": {
+            opacity: "1"
+          },
+          "100%": {
+            transform: "rotate(var(--angle)) translateX(700px)",
+            opacity: "0"
+          }
         }
       },
       animation: {
@@ -70,6 +98,7 @@ const config: Config = {
         shadow: "shadow 0.5s linear infinite",
         "reverse-spin": "reverse-spin 3s linear infinite",
         "spin-slow": "spin 6s linear infinite",
+        meteor: "meteor 5s linear infinite"
       }
     }
   },

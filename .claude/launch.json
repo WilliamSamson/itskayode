@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "itskayode-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "studio-portal-claude",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /home/kayode-olalere/Codes/react-projects/studio/portal && NEXT_DIST_DIR=.next-claude exec npx next dev -p 9013"],
+      "port": 9013
+    }
+  ]
+}

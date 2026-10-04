@@ -10,6 +10,7 @@ interface FormFieldProps {
   rows?: number;
   defaultValue?: string;
   required?: boolean;
+  variant?: "default" | "dark";
 }
 
 export function FormField({
@@ -21,17 +22,33 @@ export function FormField({
   multiline = false,
   rows = 5,
   defaultValue,
-  required = true
+  required = true,
+  variant = "default"
 }: FormFieldProps) {
   const id = `field-${name}`;
   const commonClasses = cn(
-    "focus-ring w-full rounded-sm border bg-surface px-4 py-3 text-sm text-text placeholder:text-text/45 transition-colors duration-200",
-    error ? "border-text" : "border-border hover:border-text/30"
+    "focus-ring w-full border px-4 py-3 text-[13px] transition-colors duration-200",
+    variant === "dark"
+      ? "rounded-xl border-border-subtle bg-elevated text-text placeholder:text-primary-dim hover:border-border focus:border-border-strong"
+      : "rounded-md bg-surface text-text placeholder:text-text/45",
+    error
+      ? variant === "dark"
+        ? "border-accent-red/70"
+        : "border-text"
+      : variant === "default"
+        ? "border-border hover:border-text/30"
+        : ""
   );
 
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="text-[10px] font-black uppercase tracking-[0.14em] text-text/75">
+      <label
+        htmlFor={id}
+        className={cn(
+          "text-[11px] font-semibold",
+          variant === "dark" ? "text-text/75" : "text-text/75"
+        )}
+      >
         {label}
       </label>
       {multiline ? (
@@ -60,7 +77,7 @@ export function FormField({
         />
       )}
       {error ? (
-        <p id={`${id}-error`} className="text-xs text-primary">
+        <p id={`${id}-error`} className={cn("text-[11px]", variant === "dark" ? "text-accent-red" : "text-primary")}>
           {error}
         </p>
       ) : null}

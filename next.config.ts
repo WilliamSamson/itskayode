@@ -4,6 +4,7 @@ import path from "node:path";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   output: "export",
   outputFileTracingRoot: path.resolve(__dirname),
   trailingSlash: true,

@@ -1,178 +1,152 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { type ComponentPropsWithoutRef, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { siteContent } from "@/content/site";
+
+const navVisuals = {
+  "/": {
+    icon: "M3 12l9-9 9 9M5 10v10h14V10M9 20v-6h6v6"
+  },
+  "/projects": {
+    icon: "M4 6h16v12H4zM8 3v3m8-3v3M8 10h8"
+  },
+  "/orra": {
+    icon: "M4.5 9.5h15M6.5 9.5L12 18l5.5-8.5M12 9.5V18M2.8 13.6a9.5 5 -20 1 0 18.4 -3.2a9.5 5 -20 0 0 -15 -2"
+  },
+  "/world": {
+    icon: "M4.5 9.5h15M6.5 9.5L12 18l5.5-8.5M12 9.5V18M2.8 13.6a9.5 5 -20 1 0 18.4 -3.2a9.5 5 -20 0 0 -15 -2"
+  },
+  "/writing": {
+    icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"
+  },
+  "/about": {
+    icon: "M12 12a4 4 0 100-8 4 4 0 000 8zM5 21a7 7 0 0114 0"
+  },
+  "/contact": {
+    icon: "M3 6h18v12H3zM3 7l9 7 9-7"
+  }
+} as const;
 
 export function Navbar({ className, ...props }: ComponentPropsWithoutRef<"header">) {
   const pathname = usePathname() ?? "/";
   const [mounted, setMounted] = useState(false);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const isActiveRoute = (href: string) => {
-    if (href === "/") {
-      return pathname === "/";
-    }
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
-
-  const navItems = siteContent.nav.map((navItem) => {
-    let icon = (className: string) => <span className={className} />;
-    let activeBg = "#000000";
-    let activeColor = "#ffffff";
-
-    if (navItem.href === "/") {
-      icon = (className: string) => (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-        </svg>
-      );
-      activeBg = "#2563eb"; // Cobalt Blue
-      activeColor = "#ff7a00"; // Orange (opposite of Cobalt Blue)
-    } else if (navItem.href === "/projects") {
-      icon = (className: string) => (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-      );
-      activeBg = "#f59e0b"; // Amber Gold
-      activeColor = "#1e1b4b"; // Navy (opposite of Gold)
-    } else if (navItem.href === "/about") {
-      icon = (className: string) => (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-      );
-      activeBg = "#0ea5e9"; // Sky Blue
-      activeColor = "#e11d48"; // Crimson Red (opposite of Sky Blue)
-    } else if (navItem.href === "/contact") {
-      icon = (className: string) => (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 0 002 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-        </svg>
-      );
-      activeBg = "#dc2626"; // Crimson Red
-      activeColor = "#00ffff"; // Cyan (opposite of Red)
-    }
-
-    return {
-      ...navItem,
-      icon,
-      activeBg,
-      activeColor
-    };
-  });
+  const isActiveRoute = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <>
-      {/* Top Header Logo */}
       <header
         data-site-navbar="1"
-        className={cn("w-full bg-transparent text-text", className)}
+        className={cn("sticky top-0 z-50 w-full px-2 pt-2 sm:px-4 sm:pt-3", className)}
         {...props}
       >
-        <div className="container flex h-16 items-center justify-between sm:h-20">
-          <Link
-            href="/"
-            className="focus-ring flex items-center gap-3 text-sm font-semibold tracking-tight sm:text-base group"
-          >
+        <div className="flex h-16 w-full items-center justify-between gap-5 rounded-xl border border-border-subtle bg-text/95 px-3 backdrop-blur-xl sm:h-[4.5rem] sm:px-5">
+          <Link href="/" className="focus-ring group flex shrink-0 items-center gap-3 rounded-md">
             <span
               aria-hidden
-              className="flex h-8 w-8 shrink-0 items-center justify-center border border-text text-[11px] font-black group-hover:bg-text group-hover:text-bg transition-colors"
+              className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-bg shadow-sm transition-transform duration-300 group-hover:rotate-6"
             >
-              KO
+              <Image
+                src="/itskayode-light.png"
+                alt="Kayode Olalere"
+                width={36}
+                height={36}
+                className="h-full w-full object-contain"
+                priority
+              />
             </span>
-            <span className="font-heading font-black uppercase tracking-tighter text-text/85 group-hover:text-text transition-colors">
+            <span className="hidden font-heading text-[11px] font-semibold tracking-tight text-bg sm:block">
               {siteContent.name}
             </span>
           </Link>
 
-          <Link
-            href="/contact"
-            className="focus-ring hidden sm:inline-block text-xs font-black uppercase tracking-widest text-text/40 hover:text-text transition-colors"
-          >
-            Get in touch
-          </Link>
-        </div>
-      </header>
-
-      {/* Floating Island Navigation Dock */}
-      {mounted && (
-        <motion.div
-          initial={{ y: 80, x: "-50%", opacity: 0 }}
-          animate={{ y: 0, x: "-50%", opacity: 1 }}
-          transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.15 }}
-          className="fixed bottom-6 left-1/2 z-50 pointer-events-auto"
-        >
-          <nav
-            aria-label="Floating navigation"
-            className="flex items-center gap-1.5 bg-bg border border-border px-1.5 py-1.5 rounded-full"
-          >
-            {navItems.map((item, index) => {
-              const isActive = isActiveRoute(item.href);
+          <nav aria-label="Primary navigation" className="hidden h-full items-center gap-1 lg:flex">
+            {siteContent.nav.map((item) => {
+              const active = isActiveRoute(item.href);
 
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  aria-current={isActive ? "page" : undefined}
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  onMouseLeave={() => setHoveredIndex(null)}
-                  onFocus={() => setHoveredIndex(index)}
-                  onBlur={() => setHoveredIndex(null)}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "relative p-2.5 rounded-full flex items-center justify-center transition-colors focus-ring select-none",
-                    isActive ? "text-bg" : "text-text/50 hover:text-text"
+                    "focus-ring relative inline-flex h-full items-center px-4 text-[11px] font-semibold transition-colors",
+                    active ? "text-bg" : "text-bg/35 hover:text-bg"
                   )}
-                  style={{
-                    color: isActive ? item.activeColor : undefined
-                  }}
                 >
-                  {/* Tooltip */}
-                  <AnimatePresence>
-                    {hoveredIndex === index && (
-                      <motion.span
-                        initial={{ opacity: 0, y: 6, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 6, scale: 0.95 }}
-                        transition={{ duration: 0.12, ease: "easeOut" }}
-                        className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-text text-bg rounded-md border border-border/20 whitespace-nowrap pointer-events-none z-50 shadow-none"
-                      >
-                        {item.label}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-
-                  {isActive && (
+                  {item.label.replace(" Me", "")}
+                  {active ? (
                     <motion.span
-                      layoutId="active-nav-pill"
-                      className="absolute inset-0 rounded-full -z-10"
-                      style={{ backgroundColor: item.activeBg }}
-                      animate={{ backgroundColor: item.activeBg }}
-                      transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                      layoutId="desktop-nav-line"
+                      className="absolute inset-x-4 bottom-0 h-0.5 bg-accent-green"
+                      transition={{ type: "spring", stiffness: 420, damping: 34 }}
                     />
-                  )}
-
-                  <motion.div
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="flex items-center justify-center"
-                  >
-                    {item.icon("w-[18px] h-[18px]")}
-                  </motion.div>
+                  ) : null}
                 </Link>
               );
             })}
           </nav>
-        </motion.div>
-      )}
+
+          <Link
+            href="/contact"
+            className="focus-ring inline-flex h-9 items-center gap-2 rounded-md bg-bg px-4 text-[11px] font-semibold text-text transition-transform hover:scale-[1.02]"
+          >
+            Contact
+            <span aria-hidden>↗</span>
+          </Link>
+        </div>
+      </header>
+
+      {mounted ? (
+        <motion.nav
+          aria-label="Mobile navigation"
+          initial={{ y: 80, x: "-50%", opacity: 0 }}
+          animate={{ y: 0, x: "-50%", opacity: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.1 }}
+          className="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 sm:gap-1.5 rounded-full border border-border-subtle bg-text/95 p-1.5 sm:p-2 shadow-[0_16px_45px_rgb(0_0_0_/_0.25)] backdrop-blur-xl lg:hidden"
+        >
+          {siteContent.nav.map((item) => {
+            const active = isActiveRoute(item.href);
+            const visual = navVisuals[item.href as keyof typeof navVisuals];
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-label={item.label}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "focus-ring flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full transition-all shrink-0 active:scale-95",
+                  active ? "bg-bg text-text shadow-sm font-semibold" : "text-bg/40 hover:bg-bg/10 hover:text-bg"
+                )}
+              >
+                <svg
+                  aria-hidden
+                  className="h-[19px] w-[19px]"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                >
+                  <path d={visual.icon} />
+                </svg>
+              </Link>
+            );
+          })}
+        </motion.nav>
+      ) : null}
     </>
   );
 }
