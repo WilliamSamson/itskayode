@@ -6,3 +6,13 @@ out
 .env.production
 coverage
 .DS_Store
+
+# Local agent scratch and build caches
+.orra-*/
+.codex/
+.agents/
+skills-lock.json
+scratch-*.mjs
+hardware-items.md
+tsconfig.tsbuildinfo
+.firebase/
