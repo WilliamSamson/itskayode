@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- OLED Deep Cosmic Void -->
+  <rect x="2" y="2" width="508" height="508" rx="112" fill="#040508" stroke="#ffffff" stroke-opacity="0.10" stroke-width="2.5"/>
+
+  <!-- Celestial Orbit & Planetary Calipers -->
+  <g id="celestial-system">
+    <!-- Continuous Smooth Orbit Trajectory (Dynamic Elliptical Ring) -->
+    <ellipse cx="256" cy="256" rx="180" ry="110" stroke="#ffffff" stroke-width="8" stroke-dasharray="880 180" transform="rotate(-28 256 256)"/>
+    
+    <!-- Outer Telemetry Ticks (Horizon Astrometric Calipers) -->
+    <circle cx="256" cy="256" r="204" stroke="#ffffff" stroke-width="2" stroke-dasharray="12 16" stroke-opacity="0.25"/>
+    
+    <!-- Cardinal Crosshair Nodes -->
+    <line x1="256" y1="44" x2="256" y2="60" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="256" y1="452" x2="256" y2="468" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="44" y1="256" x2="60" y2="256" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="452" y1="256" x2="468" y2="256" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Orbital Companion Moon / Sensor Station -->
+    <circle cx="398" cy="180" r="14" fill="#ffffff"/>
+    <circle cx="398" cy="180" r="22" stroke="#ffb21a" stroke-width="3" stroke-opacity="0.85"/>
+  </g>
+
+  <!-- High-Precision Faceted Floating Island Keel -->
+  <g id="faceted-island-monolith">
+    <!-- Top Architectural Terrace (Pure White Cantilever) -->
+    <polygon points="128,198 384,198 360,218 152,218" fill="#ffffff"/>
+    
+    <!-- Upper Geological Strata Band (Subtle Recessed Shelf) -->
+    <polygon points="152,222 254,222 254,250 178,250" fill="#94a3b8"/>
+    <polygon points="258,222 360,222 334,250 258,250" fill="#e2e8f0"/>
+
+    <!-- Middle Canyon Flanks (Faceted Angular Cliffs) -->
+    <polygon points="178,254 254,254 254,324 208,300" fill="#64748b"/>
+    <polygon points="258,254 334,254 304,300 258,324" fill="#ffffff"/>
+
+    <!-- Lower Plunging Stalactite Spire (Central Mountain Keel) -->
+    <polygon points="208,304 254,328 254,386 244,354" fill="#94a3b8"/>
+    <polygon points="258,328 304,304 268,354 258,386" fill="#ffffff"/>
+
+    <!-- Negative Space Center Arête Ridge -->
+    <line x1="256" y1="222" x2="256" y2="386" stroke="#040508" stroke-width="3"/>
+  </g>
+</svg>

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Subtle cosmic ambient gradient for background depth -->
+    <radialGradient id="spaceGradiant" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#0b0e14" />
+      <stop offset="100%" stop-color="#020305" />
+    </radialGradient>
+  </defs>
+
+  <!-- Container Squircle matching portfolio app icon standards -->
+  <rect x="2" y="2" width="508" height="508" rx="112" fill="url(#spaceGradiant)" stroke="#ffffff" stroke-opacity="0.10" stroke-width="3"/>
+
+  <!-- Celestial Orbit Ring with Cardinal Caliper Ticks -->
+  <g id="celestial-orbit">
+    <!-- Main Orbital Trajectory Ring -->
+    <circle cx="256" cy="256" r="156" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-dasharray="820 160" transform="rotate(-30 256 256)"/>
+    
+    <!-- Fine Telemetry Horizon Arc -->
+    <ellipse cx="256" cy="256" rx="196" ry="72" stroke="#ffffff" stroke-width="2.5" stroke-opacity="0.32" stroke-dasharray="16 12" transform="rotate(-15 256 256)"/>
+    
+    <!-- 4 Cardinal Alignment Caliper Ticks -->
+    <line x1="256" y1="76" x2="256" y2="92" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="256" y1="420" x2="256" y2="436" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="76" y1="256" x2="92" y2="256" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="420" y1="256" x2="436" y2="256" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+
+    <!-- Orbital Satellite Companion Node (Amber Telemetry Accent) -->
+    <circle cx="392" cy="180" r="14" fill="#ffffff"/>
+    <circle cx="392" cy="180" r="22" stroke="#ffb21a" stroke-width="3" stroke-opacity="0.9"/>
+  </g>
+
+  <!-- The Floating Landmass Keel (Crisp High-Contrast Geometric Silhouette) -->
+  <g id="floating-island-keel">
+    <!-- Top Architectural Plateau Slab -->
+    <polygon points="132,216 380,216 352,234 160,234" fill="#ffffff"/>
+    
+    <!-- Left Facet of Inverted Geological Keel -->
+    <polygon points="160,238 252,238 252,342 206,282" fill="#d0d7de"/>
+    
+    <!-- Center-Right Primary Illuminated Facet -->
+    <polygon points="256,238 352,238 316,284 256,346" fill="#ffffff"/>
+    
+    <!-- Deep Plunging Keel Stalactite Spine -->
+    <polygon points="248,342 256,346 264,342 256,378" fill="#ffffff"/>
+    
+    <!-- Clean Negative Space Separation Grooves -->
+    <line x1="254" y1="238" x2="254" y2="346" stroke="#06070a" stroke-width="3"/>
+    <line x1="160" y1="236" x2="352" y2="236" stroke="#06070a" stroke-width="3"/>
+  </g>
+</svg>

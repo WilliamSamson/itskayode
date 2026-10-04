@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Container Squircle -->
+  <rect x="2" y="2" width="508" height="508" rx="112" fill="#08090d" stroke="#ffffff" stroke-opacity="0.10" stroke-width="3"/>
+
+  <!-- Outer Telemetry Calipers & Dashed Radar Track -->
+  <g id="telemetry-calipers">
+    <!-- Dashed Accelerating Orbit Caliper -->
+    <circle cx="256" cy="256" r="172" stroke="#ffffff" stroke-width="4.5" stroke-dasharray="24 16" stroke-opacity="0.45"/>
+    <path d="M 120 180 A 172 172 0 0 1 392 180" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+    
+    <!-- Inclined Equatorial Ring Track -->
+    <ellipse cx="256" cy="260" rx="188" ry="86" stroke="#ffffff" stroke-width="7" stroke-dasharray="740 180" transform="rotate(-24 256 260)"/>
+    <circle cx="96" cy="302" r="12" fill="#ffffff"/>
+    <circle cx="96" cy="302" r="18" stroke="#ffb21a" stroke-width="2.5"/>
+
+    <ellipse cx="256" cy="256" rx="208" ry="96" stroke="#ffffff" stroke-width="2" stroke-opacity="0.25" transform="rotate(38 256 256)"/>
+    <circle cx="414" cy="172" r="8" fill="#ffffff"/>
+  </g>
+
+  <!-- Central Faceted Floating Keel Prism -->
+  <g id="faceted-keel">
+    <!-- Top Horizontal Cantilever Terrace -->
+    <polygon points="144,212 368,212 344,232 168,232" fill="#ffffff"/>
+    <!-- Left Wing -->
+    <polygon points="168,236 254,236 254,352 194,292" fill="#94a3b8"/>
+    <!-- Right Wing -->
+    <polygon points="258,236 344,236 318,292 258,352" fill="#ffffff"/>
+    <!-- Negative Space Center Seam -->
+    <line x1="256" y1="236" x2="256" y2="352" stroke="#08090d" stroke-width="3.5"/>
+  </g>
+</svg>
