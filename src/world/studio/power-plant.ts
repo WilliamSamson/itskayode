@@ -130,14 +130,12 @@ export function createPowerPlant(): PowerPlant {
   const copper = mat(0xc27838, 0.88, 0.22);
   const aluminumConductor = mat(0xcad6e2, 0.85, 0.22);
   const insulatedCable = mat(0x182026, 0.25, 0.65);
-  const barbedWireMat = mat(0x9ca3af, 0.85, 0.25);
   const superconductorGold = mat(0xd97706, 0.90, 0.18);
   const cryoWhite = mat(0xe2e8f0, 0.30, 0.40);
   const transformerOil = mat(0x283038, 0.65, 0.35);
   const ceramicInsulator = mat(0x8b5a2b, 0.30, 0.35);
   const solarCell = mat(0x0a192f, 0.60, 0.18, 0x0f2d4a);
   const telemetryScreen = mat(0x061822, 0.12, 0.20, 0x38bdf8);
-  const aviationOrange = mat(0xea580c, 0.15, 0.38);
   const bessContainer = mat(0x242d35, 0.45, 0.45);
   const ledGreen = mat(0x166534, 0.10, 0.20, 0x22c55e);
 
@@ -299,7 +297,7 @@ export function createPowerPlant(): PowerPlant {
     endX: number,
     endZ: number,
     postSpacing: number,
-    outwardNormal: { x: number; z: number }
+    _outwardNormal: { x: number; z: number }
   ) => {
     const dx = endX - startX;
     const dz = endZ - startZ;
@@ -314,7 +312,6 @@ export function createPowerPlant(): PowerPlant {
     // 2. Continuous horizontal rails
     const midX = (startX + endX) / 2;
     const midZ = (startZ + endZ) / 2;
-    const angle = Math.atan2(dz, dx);
 
     const makeRail = (y: number, radius: number, name: string) => {
       const rail = new THREE.Mesh(

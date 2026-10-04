@@ -80,16 +80,8 @@ function createGrassClumpGeometry(bladeCount = 12, segments = 3): THREE.BufferGe
     const baseWidth = tier === 0 ? 0.038 : tier === 1 ? 0.046 : 0.042;
     const spineDepth = baseWidth * 0.40; // Depth of the central V-crease
 
-    const cosAz = Math.cos(azimuth);
-    const sinAz = Math.sin(azimuth);
 
-    // Tangent perpendicular to azimuth in XZ plane
-    const perpX = -sinAz;
-    const perpZ = cosAz;
 
-    // Outward radial normal
-    const outX = cosAz;
-    const outZ = sinAz;
 
     for (let s = 0; s <= segments; s++) {
       const t = s / segments;

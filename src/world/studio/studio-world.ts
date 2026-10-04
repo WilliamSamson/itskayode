@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { StudioObjectId } from "./stations";
 import { createAdvancedTechLab, LAB_BOUNDS } from "./advanced-tech-lab";
-import { createPowerPlant, type PowerPlant } from "./power-plant";
+import { createPowerPlant } from "./power-plant";
 import { batchStaticMeshes } from "./static-mesh-batcher";
 import { TerrainEngine, GrassInstance } from "./terrain";
 import { rand } from "./rand";
@@ -1713,13 +1713,6 @@ export function buildStudioWorld(scene: THREE.Object3D): WorldObjects {
     plinthSideMat,
   ];
 
-  // Foundation skirt material that merges into the terrain
-  const stylobateMat = new THREE.MeshStandardMaterial({
-    color: 0x463e36, // Flamed architectural granite terrace stylobate
-    roughness: 0.86,
-    metalness: 0.05,
-    flatShading: true,
-  });
 
   const createPlinthWing = (w: number, d: number, x: number, z: number) => {
     const geo = new THREE.BoxGeometry(w, 0.4, d);
@@ -1777,8 +1770,6 @@ export function buildStudioWorld(scene: THREE.Object3D): WorldObjects {
     (LAB_BOUNDS.corridorStart + LAB_BOUNDS.south) / 2
   );
 
-  const labDepth = LAB_BOUNDS.south - LAB_BOUNDS.north;
-  const labWidth = LAB_BOUNDS.east - LAB_BOUNDS.west;
   const labCenterX = (LAB_BOUNDS.west + LAB_BOUNDS.east) / 2;
   const labChamfer = 2.4;
   const labFootprint: Array<[number, number]> = [
@@ -1800,109 +1791,9 @@ export function buildStudioWorld(scene: THREE.Object3D): WorldObjects {
     },
     honedBasaltFloorMat
   );
-  // so they stay planted on the correct floor plane through orbit, pan, zoom,
-  // and first-person movement. The artwork uses only solid colors—no glow,
-  // gradient, transparency, billboard rotation, or screen-space tracking.
-  const createFloorTag = (
-    id: StudioObjectId,
-    label: string,
-    x: number,
-    z: number,
-    width: number,
-    rotationY = 0
-  ) => {
-    const group = new THREE.Group();
-    group.position.set(x, 0.026, z);
-    group.rotation.y = rotationY;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 768;
-    canvas.height = 224;
-    const context = canvas.getContext("2d")!;
-    context.fillStyle = "#b88b5a";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = "#26221e";
-    context.fillRect(0, 0, 28, canvas.height);
-    context.strokeStyle = "#26221e";
-    context.lineWidth = 10;
-    context.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
-    context.fillStyle = "#181512";
-    context.font = "800 86px Arial, sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(label.toUpperCase(), canvas.width / 2 + 10, canvas.height / 2, 660);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
-
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(width, 0.025, 0.78),
-      new THREE.MeshStandardMaterial({
-        color: 0xb88b5a,
-        roughness: 0.94,
-        metalness: 0,
-      })
-    );
-    base.position.y = 0.0125;
-    base.receiveShadow = true;
-    group.add(base);
-
-    const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(width - 0.035, 0.745),
-      new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
-    );
-    face.rotation.x = -Math.PI / 2;
-    face.position.y = 0.026;
-    group.add(face);
-
-    interactiveMeshes.set(base, id);
-    interactiveMeshes.set(face, id);
-
-    scene.add(group);
-    floorTags.set(id, group);
-  };
 
   // Room floor mats / tags have been retired across all studio rooms for clean architectural flooring.
 
-  const createPinMarker = (id: StudioObjectId, x: number, y: number, z: number) => {
-    const pin = new THREE.Group();
-    pin.position.set(x, y, z);
-
-    const isOnline = true;
-
-    const bulbGeo = new THREE.SphereGeometry(0.12, 16, 16);
-    const bulbMat = new THREE.MeshStandardMaterial({
-      color: isOnline ? 0x8b5cf6 : 0x71717a,
-      emissive: isOnline ? 0x7c3aed : 0x27272a,
-      emissiveIntensity: isOnline ? 0.85 : 0.2,
-      roughness: 0.2,
-      metalness: 0.1,
-    });
-    const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-    bulb.position.y = 0.08;
-    pin.add(bulb);
-
-    const coneGeo = new THREE.ConeGeometry(0.12, 0.22, 16);
-    const cone = new THREE.Mesh(coneGeo, bulbMat);
-    cone.rotation.x = Math.PI;
-    cone.position.y = -0.03;
-    pin.add(cone);
-
-    const ringGeo = new THREE.RingGeometry(0.14, 0.20, 24);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: isOnline ? 0x8b5cf6 : 0x71717a,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: isOnline ? 0.45 : 0.2,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = -0.85;
-    pin.add(ring);
-
-    return pin;
-  };
 
   const WALL_H = 4.25;
 
@@ -2705,265 +2596,8 @@ export function buildStudioWorld(scene: THREE.Object3D): WorldObjects {
     scene.add(stand);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // ── PRIVATE SINGLE OFFICES BUILDER ───────────────────────────────────────────
-  // ─────────────────────────────────────────────────────────────────────────────
-  interface PrivateOfficeConfig {
-    id: StudioObjectId;
-    desk: [number, number];
-    rotation: number;
-    credenza: [number, number, number];
-    art: [number, number, number];
-    ac: [number, number, number];
-    feature: [number, number];
-    specialty: "founder" | "mlops" | "prototype" | "data" | "legal" | "ambassador";
-    accent: number;
-    isCeo?: boolean;
-  }
-
-  const createOfficeArt = (
-    x: number,
-    z: number,
-    rotY: number,
-    accent: number,
-    isCeo: boolean
-  ) => {
-    const art = new THREE.Group();
-    art.position.set(x, 1.58, z);
-    art.rotation.y = rotY;
-    const width = isCeo ? 2.5 : 1.5;
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(width, 1.22, 0.08),
-      walnutMat
-    );
-    frame.castShadow = true;
-    art.add(frame);
-
-    // Museum Matboard (warm ivory)
-    const matboard = new THREE.Mesh(
-      new THREE.BoxGeometry(width - 0.08, 1.14, 0.015),
-      new THREE.MeshStandardMaterial({ color: 0xf5f2eb, roughness: 0.92 })
-    );
-    matboard.position.z = 0.02;
-    art.add(matboard);
-
-    // Canvas facing INSIDE the room (positive local Z)
-    const canvas = new THREE.Mesh(
-      new THREE.BoxGeometry(width - 0.20, 1.02, 0.015),
-      new THREE.MeshStandardMaterial({ color: 0xe6dfd2, roughness: 0.86 })
-    );
-    canvas.position.z = 0.032;
-    art.add(canvas);
-
-    // Expressive strokes facing INSIDE the room (positive local Z)
-    [-0.28, 0.05, 0.33].forEach((offset, index) => {
-      const stroke = new THREE.Mesh(
-        new THREE.BoxGeometry(width * (0.16 + index * 0.05), 0.08, 0.02),
-        new THREE.MeshStandardMaterial({
-          color: index === 1 ? 0x171412 : accent,
-          roughness: 0.52,
-        })
-      );
-      stroke.position.set(offset * width, 0.25 - index * 0.24, 0.045);
-      stroke.rotation.z = index === 1 ? -0.45 : 0.25 + index * 0.18;
-      art.add(stroke);
-    });
-
-    // Gallery brass picture light above frame
-    const sconceArm = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.08, 8), champagneBronzeMat);
-    sconceArm.position.set(0, 0.69, 0.08);
-    sconceArm.rotation.x = Math.PI / 4;
-    art.add(sconceArm);
-
-    const sconceBar = new THREE.Mesh(new THREE.BoxGeometry(width * 0.45, 0.025, 0.04), champagneBronzeMat);
-    sconceBar.position.set(0, 0.72, 0.11);
-    sconceBar.castShadow = true;
-    art.add(sconceBar);
-
-    scene.add(art);
-  };
-
-  const createWallAc = (x: number, z: number, rotY: number) => {
-    const ac = new THREE.Group();
-    ac.position.set(x, 2.23, z);
-    ac.rotation.y = rotY;
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(1.08, 0.30, 0.18),
-      new THREE.MeshStandardMaterial({ color: 0xe8e5df, roughness: 0.48 })
-    );
-    body.castShadow = true;
-    ac.add(body);
-    for (let i = 0; i < 6; i++) {
-      const vent = new THREE.Mesh(
-        new THREE.BoxGeometry(0.11, 0.018, 0.012),
-        monitorBezelMat
-      );
-      vent.position.set(-0.40 + i * 0.16, -0.09, -0.10);
-      ac.add(vent);
-    }
-    scene.add(ac);
-  };
-
-  const createRoleFeature = (
-    specialty: PrivateOfficeConfig["specialty"],
-    x: number,
-    z: number,
-    accent: number
-  ) => {
-    const feature = new THREE.Group();
-    feature.position.set(x, 0, z);
-    const pedestal = new THREE.Mesh(
-      new THREE.BoxGeometry(0.72, 0.58, 0.50),
-      castStoneMat
-    );
-    pedestal.position.y = 0.29;
-    pedestal.castShadow = true;
-    feature.add(pedestal);
-    const accentMat = new THREE.MeshStandardMaterial({
-      color: accent,
-      roughness: 0.34,
-      metalness: 0.42,
-    });
-
-    if (specialty === "mlops") {
-      const rack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.90, 0.36), monitorBezelMat);
-      rack.position.y = 1.02;
-      rack.castShadow = true;
-      feature.add(rack);
-      for (let i = 0; i < 4; i++) {
-        const slot = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.055, 0.02), accentMat);
-        slot.position.set(0, 1.28 - i * 0.18, -0.20);
-        feature.add(slot);
-      }
-    } else if (specialty === "data") {
-      [0.28, 0.50, 0.72].forEach((height, i) => {
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.12, height, 0.12), accentMat);
-        bar.position.set(-0.20 + i * 0.20, 0.58 + height / 2, 0);
-        feature.add(bar);
-      });
-    } else if (specialty === "prototype") {
-      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), accentMat);
-      cube.position.set(-0.10, 0.83, 0);
-      cube.rotation.set(0.2, 0.5, 0.18);
-      feature.add(cube);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.20, 0.035, 10, 24), accentMat);
-      ring.position.set(0.16, 1.15, 0);
-      ring.rotation.y = Math.PI / 3;
-      feature.add(ring);
-    } else if (specialty === "legal") {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.62, 12), accentMat);
-      post.position.y = 0.92;
-      feature.add(post);
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.035, 0.035), accentMat);
-      beam.position.y = 1.18;
-      feature.add(beam);
-      [-0.21, 0.21].forEach((px) => {
-        const scale = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.025, 20), accentMat);
-        scale.position.set(px, 1.02, 0);
-        feature.add(scale);
-      });
-    } else if (specialty === "ambassador") {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.035, 10, 28), accentMat);
-      ring.position.y = 1.02;
-      feature.add(ring);
-      for (let i = 0; i < 5; i++) {
-        const node = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), accentMat);
-        const angle = (i / 5) * Math.PI * 2;
-        node.position.set(Math.cos(angle) * 0.30, 1.02 + Math.sin(angle) * 0.30, 0);
-        feature.add(node);
-      }
-    } else {
-      const sculpture = new THREE.Mesh(new THREE.TorusKnotGeometry(0.22, 0.055, 48, 8), accentMat);
-      sculpture.position.y = 1.0;
-      sculpture.scale.set(1.15, 1.15, 1.15);
-      feature.add(sculpture);
-    }
-    scene.add(feature);
-  };
-
-  const makePrivateOffice = (config: PrivateOfficeConfig) => {
-    const { desk, rotation, credenza, art, ac, feature, specialty, accent, isCeo = false } = config;
-    const [deskX, deskZ] = desk;
-    const group = new THREE.Group();
-    group.position.set(deskX, 0, deskZ);
-    group.rotation.y = rotation;
-
-    const deskWidth = isCeo ? 2.75 : 2.05;
-    const top = new THREE.Mesh(
-      new THREE.BoxGeometry(deskWidth, isCeo ? 0.10 : 0.075, isCeo ? 1.08 : 0.92),
-      isCeo ? walnutMat : oakWoodMat
-    );
-    top.position.y = 0.78;
-    top.castShadow = true;
-    top.receiveShadow = true;
-    group.add(top);
-
-    const inlay = new THREE.Mesh(
-      new THREE.BoxGeometry(deskWidth * 0.72, 0.014, 0.08),
-      champagneBronzeMat
-    );
-    inlay.position.set(0, 0.84, 0.02);
-    group.add(inlay);
-
-    [-deskWidth * 0.36, deskWidth * 0.36].forEach((x) => {
-      const plinth = new THREE.Mesh(
-        new THREE.BoxGeometry(0.16, 0.74, 0.72),
-        isCeo ? champagneBronzeMat : aluminumMat
-      );
-      plinth.position.set(x, 0.38, 0);
-      plinth.castShadow = true;
-      group.add(plinth);
-    });
-
-    const monitorCount = specialty === "data" || specialty === "mlops" || isCeo ? 2 : 1;
-    for (let i = 0; i < monitorCount; i++) {
-      const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.43, 0.035), monitorBezelMat);
-      monitor.position.set((i - (monitorCount - 1) / 2) * 0.78, 1.13, -0.30);
-      monitor.castShadow = true;
-      group.add(monitor);
-    }
-    scene.add(group);
-
-    const localToWorld = (localX: number, localZ: number): [number, number] => {
-      const cos = Math.cos(rotation);
-      const sin = Math.sin(rotation);
-      return [deskX + cos * localX + sin * localZ, deskZ - sin * localX + cos * localZ];
-    };
-    const staffChair = localToWorld(0, 0.86);
-    createErgonomicChair(staffChair[0], staffChair[1], rotation + Math.PI);
-    [[-0.58, -1.08], [0.58, -1.08]].forEach(([localX, localZ]) => {
-      const guest = localToWorld(localX, localZ);
-      createErgonomicChair(guest[0], guest[1], rotation, isCeo);
-    });
-    createExecutiveCredenza(credenza[0], credenza[1], credenza[2], isCeo ? 2.8 : 1.9);
-    createOfficeArt(art[0], art[1], art[2], accent, isCeo);
-    createWallAc(ac[0], ac[1], ac[2]);
-    createRoleFeature(specialty, feature[0], feature[1], accent);
-
-    if (isCeo) {
-      // Private strategy setting: a soft-rectangle table with three executive chairs.
-      const strategyTable = new THREE.Mesh(
-        new THREE.BoxGeometry(1.75, 0.08, 0.82),
-        castStoneMat
-      );
-      strategyTable.position.set(-21.2, 0.70, 2.75);
-      strategyTable.castShadow = true;
-      scene.add(strategyTable);
-      createErgonomicChair(-21.85, 2.75, Math.PI / 2, true);
-      createErgonomicChair(-20.55, 2.75, -Math.PI / 2, true);
-      createErgonomicChair(-21.2, 3.45, Math.PI, true);
-
-      const executiveRug = new THREE.Mesh(
-        new THREE.BoxGeometry(5.7, 0.018, 5.15),
-        new THREE.MeshStandardMaterial({ color: 0xc8bba8, roughness: 0.88 })
-      );
-      executiveRug.position.set(-21.7, 0.025, 0.2);
-      executiveRug.receiveShadow = true;
-      scene.add(executiveRug);
-    }
 
 
-  };
 
   // ── ARCHITECTURAL CORRIDOR CARPET: TAILORED BRAND SLATE WOOL RUNNER ──
   // Muted brand heather-slate with tactile loop-pile ribbed corduroy weave and cross-grain stippling.
@@ -3838,164 +3472,8 @@ export function buildStudioWorld(scene: THREE.Object3D): WorldObjects {
   createFloorPlanterStand(-1.30, 3.42, 0.9);
   createFloorPlanterStand(-24.65, -3.25, 1.05);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // ── ARCHITECTURAL HALLWAY GALLERY: CABINETS, FRAMED ART & FLOWER POTS ─────────
-  // ─────────────────────────────────────────────────────────────────────────────
-  const bookMats = [
-    new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.60 }), // Navy
-    new THREE.MeshStandardMaterial({ color: 0xc4822f, roughness: 0.55 }), // Warm Amber
-    new THREE.MeshStandardMaterial({ color: 0x9e4732, roughness: 0.65 }), // Terracotta
-    new THREE.MeshStandardMaterial({ color: 0x4a6351, roughness: 0.60 }), // Sage Green
-    new THREE.MeshStandardMaterial({ color: 0xded8ce, roughness: 0.70 }), // Bone White
-    new THREE.MeshStandardMaterial({ color: 0x282a30, roughness: 0.50 }), // Charcoal
-    new THREE.MeshStandardMaterial({ color: 0x7a2828, roughness: 0.60 }), // Crimson
-    new THREE.MeshStandardMaterial({ color: 0x234433, roughness: 0.65 }), // Forest
-  ];
 
   /** Low-profile architectural book cabinet with open shelving, books, stone top and artifacts. */
-  const createHallwayBookCabinet = (
-    cx: number,
-    cz: number,
-    rotY: number,
-    width = 2.2,
-    height = 0.88,
-    depth = 0.32
-  ) => {
-    const cabinet = new THREE.Group();
-    cabinet.position.set(cx, 0, cz);
-    cabinet.rotation.y = rotY;
-
-    // Recessed bronze kickplate
-    const plinth = new THREE.Mesh(
-      new THREE.BoxGeometry(width - 0.08, 0.08, depth - 0.06),
-      inGroundBronzeMat
-    );
-    plinth.position.y = 0.04;
-    plinth.receiveShadow = true;
-    cabinet.add(plinth);
-
-    const wallThick = 0.03;
-    const bodyH = height - 0.08 - 0.035;
-    const bodyY = 0.08 + bodyH / 2;
-
-    // Side panels
-    [-width / 2 + wallThick / 2, width / 2 - wallThick / 2].forEach((sx) => {
-      const side = new THREE.Mesh(new THREE.BoxGeometry(wallThick, bodyH, depth), walnutMat);
-      side.position.set(sx, bodyY, 0);
-      side.castShadow = true;
-      side.receiveShadow = true;
-      cabinet.add(side);
-    });
-
-    // Bottom shelf
-    const bottom = new THREE.Mesh(new THREE.BoxGeometry(width - wallThick * 2, wallThick, depth), walnutMat);
-    bottom.position.set(0, 0.08 + wallThick / 2, 0);
-    bottom.receiveShadow = true;
-    cabinet.add(bottom);
-
-    // Middle shelf
-    const midShelf = new THREE.Mesh(new THREE.BoxGeometry(width - wallThick * 2, wallThick, depth - 0.02), walnutMat);
-    midShelf.position.set(0, 0.08 + bodyH * 0.52, 0);
-    midShelf.receiveShadow = true;
-    cabinet.add(midShelf);
-
-    // Back panel
-    const back = new THREE.Mesh(new THREE.BoxGeometry(width - wallThick * 2, bodyH, 0.015), walnutMat);
-    back.position.set(0, bodyY, -depth / 2 + 0.01);
-    cabinet.add(back);
-
-    // Top slab: Honed cast stone / travertine slab
-    const stoneTop = new THREE.Mesh(
-      new THREE.BoxGeometry(width + 0.06, 0.035, depth + 0.04),
-      castStoneMat
-    );
-    stoneTop.position.set(0, height - 0.0175, 0);
-    stoneTop.castShadow = true;
-    stoneTop.receiveShadow = true;
-    cabinet.add(stoneTop);
-
-    // Books on bottom shelf
-    const shelf1Y = 0.11;
-    const shelf2Y = 0.08 + bodyH * 0.52 + wallThick / 2;
-
-    const populateShelf = (shelfY: number, startXRatio: number, count: number, startMatIdx: number) => {
-      let currentX = -width * 0.42 + startXRatio * (width * 0.84);
-      for (let i = 0; i < count; i++) {
-        const bW = 0.032 + (i % 3) * 0.012;
-        const bH = 0.22 + ((i * 7) % 5) * 0.022;
-        const bD = depth * 0.72 - ((i * 3) % 4) * 0.015;
-        const mat = bookMats[(startMatIdx + i) % bookMats.length];
-        const book = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, bD), mat);
-        book.position.set(currentX + bW / 2, shelfY + bH / 2, 0.01);
-        book.castShadow = true;
-        cabinet.add(book);
-        currentX += bW + 0.005;
-      }
-    };
-
-    populateShelf(shelf1Y, 0.02, 7, 0);
-    populateShelf(shelf1Y, 0.55, 6, 3);
-
-    // Bronze bookend on shelf 1
-    const bookend1 = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.14, 0.16), champagneBronzeMat);
-    bookend1.position.set(-width * 0.42 + 0.32, shelf1Y + 0.07, 0.01);
-    cabinet.add(bookend1);
-
-    // Ceramic artifact vase on shelf 1 center
-    const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.045, 0.22, 16), potStoneMat);
-    vase.position.set(0.04, shelf1Y + 0.11, 0.02);
-    vase.castShadow = true;
-    cabinet.add(vase);
-
-    // Shelf 2 (Middle)
-    populateShelf(shelf2Y, 0.04, 8, 2);
-
-    // Stack of 3 horizontal art monographs
-    [0, 1, 2].forEach((stackIdx) => {
-      const stackBook = new THREE.Mesh(
-        new THREE.BoxGeometry(0.24, 0.036, 0.20),
-        bookMats[(stackIdx * 2 + 1) % bookMats.length]
-      );
-      stackBook.position.set(width * 0.26, shelf2Y + 0.018 + stackIdx * 0.036, 0.02);
-      stackBook.castShadow = true;
-      cabinet.add(stackBook);
-    });
-
-    // Small bronze geometric ring sculpture atop stacked books
-    const ringGeo = new THREE.TorusGeometry(0.045, 0.014, 8, 20);
-    const ringMesh = new THREE.Mesh(ringGeo, champagneBronzeMat);
-    ringMesh.position.set(width * 0.26, shelf2Y + 0.108 + 0.05, 0.02);
-    ringMesh.rotation.x = Math.PI / 2;
-    cabinet.add(ringMesh);
-
-    // Top surface accents:
-    // Minimalist brass table lamp
-    const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 16), champagneBronzeMat);
-    lampBase.position.set(-width * 0.32, height + 0.01, 0);
-    cabinet.add(lampBase);
-    const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.26, 8), champagneBronzeMat);
-    lampPole.position.set(-width * 0.32, height + 0.14, 0);
-    cabinet.add(lampPole);
-    const lampShade = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.09, 16), castStoneMat);
-    lampShade.position.set(-width * 0.32, height + 0.26, 0);
-    lampShade.castShadow = true;
-    cabinet.add(lampShade);
-
-    // Ceramic succulent dish on top surface
-    const potTop = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.065, 0.055, 16), potStoneMat);
-    potTop.position.set(width * 0.30, height + 0.0275, 0);
-    potTop.castShadow = true;
-    cabinet.add(potTop);
-    [[-0.025, 0.05, 0.01], [0.025, 0.06, -0.015], [0.01, 0.045, 0.025]].forEach(([fx, fy, fz], idx) => {
-      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.04 - idx * 0.006, 10, 10), idx === 0 ? foliageLimeMat : foliageMossMat);
-      leaf.scale.set(1.2, 0.7, 1.2);
-      leaf.position.set(width * 0.30 + fx, height + fy, fz);
-      cabinet.add(leaf);
-    });
-
-    scene.add(cabinet);
-    return cabinet;
-  };
 
   /** Curated wall art frame with museum matboard, modern composition, and linear brass downlight sconce. */
   const createHallwayArtFrame = (
@@ -4237,28 +3715,6 @@ export function buildStudioWorld(scene: THREE.Object3D): WorldObjects {
   };
 
   /** Sculptural museum gallery plinth with geometric bronze artwork in hallway niches. */
-  const createHallwayPedestalArt = (px: number, pz: number) => {
-    const pedestalGroup = new THREE.Group();
-    pedestalGroup.position.set(px, 0, pz);
-
-    const plinth = new THREE.Mesh(
-      new THREE.BoxGeometry(0.38, 0.82, 0.38),
-      basaltPlinthMat
-    );
-    plinth.position.y = 0.41;
-    plinth.castShadow = true;
-    plinth.receiveShadow = true;
-    pedestalGroup.add(plinth);
-
-    const sculptureGeo = new THREE.TorusKnotGeometry(0.12, 0.035, 48, 12);
-    const sculpture = new THREE.Mesh(sculptureGeo, champagneBronzeMat);
-    sculpture.position.y = 0.82 + 0.16;
-    sculpture.castShadow = true;
-    pedestalGroup.add(sculpture);
-
-    scene.add(pedestalGroup);
-    return pedestalGroup;
-  };
 
 
 
@@ -5134,7 +4590,7 @@ export function buildStudioWorld(scene: THREE.Object3D): WorldObjects {
 
   // 5. Handcrafted Stone Andon Floor Lanterns with Breathing Amber Light Core
   const andonLights: THREE.PointLight[] = [];
-  const createAndonLantern = (lx: number, lz: number, seed: number) => {
+  const createAndonLantern = (lx: number, lz: number, _seed: number) => {
     const lantern = new THREE.Group();
     lantern.position.set(lx, 0, lz);
 
