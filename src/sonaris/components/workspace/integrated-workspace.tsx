@@ -4,7 +4,8 @@ import React, { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AssemblyWorkbench } from "./assembly-workbench";
 import { PowerWorkbench } from "./power-workbench";
-import { WorkspaceCases, type CaseCache } from "./workspace-cases";
+import { ScanWorkbench, type ScanSessionCache } from "./scan-workbench";
+import { FabricationWorkbench } from "./fabrication-workbench";
 import styles from "./integrated-workspace.module.css";
 import Link from "next/link";
 
@@ -14,8 +15,7 @@ export function IntegratedWorkspace() {
   );
 
   const reducedMotion = useReducedMotion();
-  const caseCache = useRef<CaseCache | null>(null);
-  const [, setPointCount] = useState(0);
+  const scanCache = useRef<ScanSessionCache | null>(null);
 
   const tabs = [
     { id: "architecture", label: "Assembly" },
@@ -112,8 +112,10 @@ export function IntegratedWorkspace() {
                   <AssemblyWorkbench />
                 ) : activeTab === "power" ? (
                   <PowerWorkbench />
+                ) : activeTab === "scan" ? (
+                  <ScanWorkbench cache={scanCache} />
                 ) : (
-                  <WorkspaceCases tab={activeTab} onPointCount={setPointCount} cache={caseCache} />
+                  <FabricationWorkbench />
                 )}
               </motion.section>
             </AnimatePresence>

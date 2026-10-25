@@ -79,4 +79,13 @@ describe("SONARIS Scan Reconstruction Workbench", () => {
     expect(scanStageCode).toContain("obstaclesGroup");
     expect(scanStageCode).toContain("pathGroup");
   });
+
+  it("integrates advanced mobile robot navigation with Theta*, APF, Pure Pursuit, and 2D SLAM interlock", () => {
+    expect(scanWorkbenchCode).toContain("Theta*");
+    expect(scanWorkbenchCode).toContain("Pure Pursuit");
+    expect(scanWorkbenchCode).toContain("APF");
+    expect(scanWorkbenchCode).toContain("computeAPF");
+    expect(scanWorkbenchCode).toContain("2D Cartographer");
+    expect(scanWorkbenchCode).toContain("0° Level Interlock");
+  });
 });

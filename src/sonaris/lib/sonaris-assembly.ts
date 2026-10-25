@@ -98,7 +98,7 @@ const fixed: AssemblyPart[] = [
     "Custom lower chassis",
     "plate",
     "structure",
-    [0, 110, 0],
+    [0, 88, 0],
     [360, 8, 280],
     [0, -80, 0]
   ),
@@ -108,7 +108,7 @@ const fixed: AssemblyPart[] = [
     "Custom mounting layer",
     "plate",
     "structure",
-    [0, 210, 0],
+    [0, 174, 0],
     [310, 6, 240],
     [0, 130, 0]
   ),
@@ -118,7 +118,7 @@ const fixed: AssemblyPart[] = [
     "Custom chassis rail",
     "rail",
     "structure",
-    [0, 135, 128],
+    [0, 110, 128],
     [340, 40, 8],
     [0, 0, 100]
   ),
@@ -128,7 +128,7 @@ const fixed: AssemblyPart[] = [
     "Custom chassis rail",
     "rail",
     "structure",
-    [0, 135, -128],
+    [0, 110, -128],
     [340, 40, 8],
     [0, 0, -100]
   ),
@@ -138,7 +138,7 @@ const fixed: AssemblyPart[] = [
     "BLF-1212AS LiFePO4, 12 V-class 12 Ah",
     "battery",
     "power",
-    [-55, 152, 0],
+    [-55, 127, 0],
     [150, 70, 85],
     [-90, 0, 0],
     [
@@ -161,7 +161,7 @@ const fixed: AssemblyPart[] = [
     "Custom strap and restraint",
     "restraint",
     "structure",
-    [-55, 190, 0],
+    [-55, 164, 0],
     [160, 7, 94],
     [-90, 60, 0]
   ),
@@ -171,7 +171,7 @@ const fixed: AssemblyPart[] = [
     "Raspberry Pi 5, 8 GB",
     "board",
     "compute",
-    [-64, 223, 20],
+    [-64, 187, 20],
     [85, 12, 56],
     [-60, 220, 0],
     [powerIn([-38, 3, -20]), signal("control", "out"), signal("lidar", "in")],
@@ -185,7 +185,7 @@ const fixed: AssemblyPart[] = [
     "Pi 5 active cooler, exact model unresolved",
     "cooler",
     "compute",
-    [-64, 242, 20],
+    [-64, 204, 20],
     [60, 18, 46],
     [-60, 290, 0],
     [powerIn()],
@@ -199,7 +199,7 @@ const fixed: AssemblyPart[] = [
     "128 GB microSD",
     "storage",
     "compute",
-    [-110, 220, 20],
+    [-110, 184, 20],
     [15, 1, 11],
     [-130, 190, 0],
     [],
@@ -213,7 +213,7 @@ const fixed: AssemblyPart[] = [
     "Raspberry Pi Pico (original)",
     "board",
     "compute",
-    [40, 222, -65],
+    [40, 185, -65],
     [51, 7, 21],
     [80, 210, -60],
     [
@@ -234,7 +234,7 @@ const fixed: AssemblyPart[] = [
     "BNO085 breakout, board model unresolved",
     "board",
     "sensing",
-    [85, 223, 2],
+    [85, 185, 2],
     [28, 5, 22],
     [120, 220, 0],
     [powerIn(), signal("orientation", "out")],
@@ -248,7 +248,7 @@ const fixed: AssemblyPart[] = [
     "DC-DC converter, model unresolved",
     "converter",
     "power",
-    [60, 150, -72],
+    [60, 105, -72],
     [65, 25, 40],
     [100, 70, -80],
     [
@@ -269,7 +269,7 @@ const fixed: AssemblyPart[] = [
     "DC-DC converter, model unresolved",
     "converter",
     "power",
-    [60, 150, 72],
+    [60, 105, 72],
     [65, 25, 40],
     [100, 70, 80],
     [
@@ -290,7 +290,7 @@ const fixed: AssemblyPart[] = [
     "Custom frame and bearing mounts",
     "tilt-frame",
     "sensing",
-    [80, 269, 0],
+    [80, 231, 0],
     [110, 72, 100],
     [0, 360, 0]
   ),
@@ -300,7 +300,7 @@ const fixed: AssemblyPart[] = [
     "ST3215, 12 V variant",
     "servo",
     "sensing",
-    [80, 268, -70],
+    [80, 230, -70],
     [42, 40, 24],
     [0, 350, -120],
     [powerIn([0, 15, -10], 12), signal("tilt-command", "in")],
@@ -314,7 +314,7 @@ const fixed: AssemblyPart[] = [
     "RPLIDAR S2",
     "lidar",
     "sensing",
-    [80, 305, 0],
+    [80, 267, 0],
     [77, 42, 77],
     [0, 450, 0],
     [powerIn([-28, -15, 0]), signal("scan-data", "out")],
@@ -328,7 +328,7 @@ const fixed: AssemblyPart[] = [
     "Hardware stop, exact part unresolved",
     "estop",
     "safety",
-    [130, 235, 80],
+    [130, 198, 80],
     [30, 38, 30],
     [110, 220, 100],
     [
@@ -348,7 +348,7 @@ const fixed: AssemblyPart[] = [
     "Contactor / disconnect, model unresolved",
     "disconnect",
     "safety",
-    [125, 153, 0],
+    [125, 114, 0],
     [45, 45, 40],
     [140, 70, 0],
     [
@@ -370,7 +370,7 @@ const fixed: AssemblyPart[] = [
     "Fuse and protection selection unresolved",
     "protection",
     "safety",
-    [-140, 150, -65],
+    [-140, 105, -65],
     [48, 25, 45],
     [-130, 40, -80],
     [
@@ -391,7 +391,7 @@ const fixed: AssemblyPart[] = [
     "Current/voltage monitor, model unresolved",
     "board",
     "power",
-    [-140, 150, 65],
+    [-140, 98, 65],
     [35, 12, 35],
     [-130, 50, 90],
     [powerIn(), signal("measurement", "out")]
@@ -404,7 +404,7 @@ const drivers: AssemblyPart[] = [-1, 1].map((side, i) =>
     "Cytron MDD10A",
     "driver",
     "drive",
-    [-85, 222, side * 82],
+    [-85, 186, side * 82],
     [84.5, 15, 62],
     [-140, 170, side * 110],
     [
@@ -492,13 +492,45 @@ for (const [end, x] of [
         "Motor mounting bracket, selection unresolved",
         "bracket",
         "drive",
-        [x, 87, sign * 130],
-        [48, 46, 5],
+        [x, 68, sign * 126],
+        [52, 46, 36],
         [away[0], 30, sign * 90]
       )
     );
   }
-export const assemblyParts: AssemblyPart[] = [...fixed, ...drivers, ...drivetrain];
+/** Removable concept bodywork. The shell's local origin sits on the deck top (y = 178 mm);
+ * panels leave the side bays open and keep the tilting S2 LiDAR clear above the nose. */
+const bodywork: AssemblyPart[] = [
+  part(
+    "shell",
+    "Body shell",
+    "Faceted panel shell and carry hoop, concept",
+    "shell",
+    "structure",
+    [0, 178, 0],
+    [362, 64, 250],
+    [0, 240, 0],
+    [],
+    "concept",
+    proposal,
+    `Concept bodywork only: panel facets, hoop and fender geometry are styling envelopes, not released panel drawings or material selections. Panels must clear the LiDAR tilt arc and E-stop access. ${concept}`
+  ),
+  part(
+    "bumper",
+    "Front bumper",
+    "Bumper bar on two arms, concept",
+    "bumper",
+    "structure",
+    [212, 86, 0],
+    [24, 34, 300],
+    [120, 0, 0],
+    [],
+    "concept",
+    proposal,
+    `Concept protective bar; no contact sensing is claimed. Mounting arms and impact rating are unverified. ${concept}`
+  )
+];
+export const assemblyParts: AssemblyPart[] = [...fixed, ...drivers, ...drivetrain, ...bodywork];
 
 export interface PartProposalFacts {
   role: string;
@@ -720,6 +752,31 @@ export function getPartProposalFacts(part: AssemblyPart): PartProposalFacts {
         bedFit300,
         engineeringGate: "Select shunt monitor IC/breakout and define low-voltage cutoff threshold",
         mechanicalLinks: [{ partId: "base", relation: "Mounted on lower power bay" }]
+      };
+    case "shell":
+      return {
+        role: "Removable faceted body shell coupling the upper canopy, U-hood around the LiDAR well, armored side pods, nose/tail fairings, and carry hoop",
+        electrical: "Passive bodywork (no electrical terminals); lifts off in exploded view or via Body toggle to expose internal bays",
+        envelopeBasis: "362 × 156 × 264 mm coupled styling enclosure from lower base plate to canopy roof",
+        bedFit300,
+        engineeringGate: "Split into ≤300 mm bolted panels; verify LiDAR tilt arc (-30°..+60°), E-stop reach, and louver airflow",
+        mechanicalLinks: [
+          { partId: "deck", relation: "Canopy and U-hood bolt to upper electronics deck" },
+          { partId: "base", relation: "Lower tub walls and nose/tail fairings couple to base plate" },
+          { partId: "rail-left", relation: "Left armored side pod encloses side rail bay" },
+          { partId: "rail-right", relation: "Right armored side pod encloses side rail bay" },
+          { partId: "lidar", relation: "Recessed U-hood well keeps tilting scanner clear" },
+          { partId: "estop", relation: "E-stop mushroom passes through left shoulder" }
+        ]
+      };
+    case "bumper":
+      return {
+        role: "Front protective bar ahead of the mecanum wheels, absorbing low-speed knocks before the chassis",
+        electrical: "Passive structure; no contact or ultrasonic sensing claimed",
+        envelopeBasis: "24 × 36 × 300 mm concept bar with two mounting arms",
+        bedFit300,
+        engineeringGate: "Confirm arm stiffness, front wheel clearance during strafing, and fixings into base plate",
+        mechanicalLinks: [{ partId: "base", relation: "Arms bolt to the front of the lower base plate" }]
       };
     case "base":
       return {

@@ -1,13 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
+  ADHESION_TYPES,
   CHASSIS_COMPONENTS,
   FABRICATION_MATERIALS,
+  INFILL_PATTERNS,
+  LAYER_HEIGHT_OPTIONS,
+  PRINTER_PROFILES,
+  SUPPORT_STYLES,
   calculatePartFabrication,
+  formatPrintDuration,
+  type AdhesionTypeId,
   type ChassisPartId,
-  type FabricationMaterialId
+  type FabricationMaterialId,
+  type InfillPatternId,
+  type LayerHeightMm,
+  type PrinterProfileId,
+  type SupportStyleId
 } from "./fabrication-models";
 import styles from "./fabrication-workbench.module.css";
 
@@ -16,19 +27,11 @@ const FabricationStage = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="relative h-full min-h-[440px] w-full overflow-hidden rounded-[24px] bg-[#000000] flex flex-col items-center justify-center gap-3 font-mono text-[11px] text-[#A87914] select-none">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#1F6B42] animate-pulse" />
-          <strong className="tracking-wider uppercase text-[#FFFFFF] text-[12px]">
-            SONARIS · 3D Fabrication Viewport
-          </strong>
-        </div>
-        <div className="flex items-center gap-2 text-[10px] text-[#A09A8F]">
-          <span className="inline-block h-1.5 w-24 overflow-hidden rounded-full bg-[#2A2B33]">
-            <span className="block h-full w-2/3 animate-pulse rounded-full bg-[#1F6B42]" />
-          </span>
-          <span>Mounting 300 × 300 mm Bed Reference Standard</span>
-        </div>
+      <div className="relative h-full min-h-[420px] w-full overflow-hidden bg-[var(--sonaris-deck)] flex flex-col items-center justify-center gap-2 font-mono text-[11px] text-[var(--sonaris-studio-muted)] select-none">
+        <strong className="tracking-wider uppercase text-[var(--sonaris-studio-ink)] text-[12px]">
+          SONARIS · 3D Slicer &amp; Fabrication Bed
+        </strong>
+        <span className="text-[10px]">Mounting PEI Build Plate &amp; Toolpath Engine</span>
       </div>
     )
   }
@@ -37,13 +40,20 @@ const FabricationStage = dynamic(
 export function FabricationWorkbench() {
   const [selectedPartId, setSelectedPartId] = useState<ChassisPartId>("base-plate");
   const [selectedMaterialId, setSelectedMaterialId] = useState<FabricationMaterialId>("petg-cf");
+  const [printerProfileId, setPrinterProfileId] = useState<PrinterProfileId>("voron-300");
+  const [infillPattern, setInfillPattern] = useState<InfillPatternId>("gyroid");
+  const [supportStyle, setSupportStyle] = useState<SupportStyleId>("tree-organic");
+  const [adhesionType, setAdhesionType] = useState<AdhesionTypeId>("brim-8mm");
+  const [layerHeightMm, setLayerHeightMm] = useState<LayerHeightMm>(0.20);
+  const [infillPercent, setInfillPercent] = useState<number>(25);
+  const [wallLoops, setWallLoops] = useState<number>(4);
   const [isRotated90, setIsRotated90] = useState<boolean>(false);
   const [showBuildCage, setShowBuildCage] = useState<boolean>(true);
   const [explodeAmount, setExplodeAmount] = useState<number>(0);
   const [sliceHeightMm, setSliceHeightMm] = useState<number>(350);
-  const [infillPercent, setInfillPercent] = useState<number>(25);
-  const [wallLoops, setWallLoops] = useState<number>(4);
-  const [inspectorTab, setInspectorTab] = useState<"fit" | "slicing" | "hardware">("fit");
+  const [isAutoSlicing, setIsAutoSlicing] = useState<boolean>(false);
+  const [cameraView, setCameraView] = useState<"isometric" | "top" | "front" | "side">("isometric");
+  const [inspectorTab, setInspectorTab] = useState<"slicer" | "machine" | "hardware">("slicer");
 
   const currentPart = useMemo(
     () => CHASSIS_COMPONENTS.find((p) => p.id === selectedPartId) || CHASSIS_COMPONENTS[0],
@@ -55,26 +65,88 @@ export function FabricationWorkbench() {
     [selectedMaterialId]
   );
 
-  const metrics = useMemo(
-    () => calculatePartFabrication(selectedPartId, selectedMaterialId, infillPercent, wallLoops),
-    [selectedPartId, selectedMaterialId, infillPercent, wallLoops]
+  const currentPrinter = useMemo(
+    () => PRINTER_PROFILES.find((p) => p.id === printerProfileId) || PRINTER_PROFILES[0],
+    [printerProfileId]
   );
 
-  // Active footprint dimensions accounting for 90° rotation
+  const currentPattern = useMemo(
+    () => INFILL_PATTERNS.find((p) => p.id === infillPattern) || INFILL_PATTERNS[0],
+    [infillPattern]
+  );
+
+  const currentSupport = useMemo(
+    () => SUPPORT_STYLES.find((s) => s.id === supportStyle) || SUPPORT_STYLES[0],
+    [supportStyle]
+  );
+
+  const metrics = useMemo(
+    () =>
+      calculatePartFabrication(selectedPartId, selectedMaterialId, infillPercent, wallLoops, {
+        infillPattern,
+        supportStyle,
+        adhesionType,
+        layerHeightMm,
+        printerProfileId,
+        supportEnabled: supportStyle !== "none",
+        isRotated90
+      }),
+    [
+      selectedPartId,
+      selectedMaterialId,
+      infillPercent,
+      wallLoops,
+      infillPattern,
+      supportStyle,
+      adhesionType,
+      layerHeightMm,
+      printerProfileId,
+      isRotated90
+    ]
+  );
+
+  // Active footprint dimensions accounting for 90° bed orientation
   const partX = isRotated90 ? currentPart.widthMm : currentPart.lengthMm;
   const partY = isRotated90 ? currentPart.lengthMm : currentPart.widthMm;
-  const xyFits = partX <= 300 && partY <= 300;
-  const zFits = currentPart.heightMm <= 350;
+  const maxSliceTarget = Math.min(currentPrinter.bedMm[2], currentPart.heightMm + 6);
+  const isSlicing = sliceHeightMm < maxSliceTarget - 1;
+  const currentSliceLayer = Math.min(
+    metrics.layerCount,
+    Math.max(1, Math.round(sliceHeightMm / layerHeightMm))
+  );
+
+  // Continuous layer-by-layer Z-slice playback loop when `isAutoSlicing` is active
+  useEffect(() => {
+    if (!isAutoSlicing) return;
+    let rafId = 0;
+    let lastTs = performance.now();
+    const topZ = Math.max(8, currentPart.heightMm + 2);
+
+    const step = (now: number) => {
+      const dt = Math.min(0.06, (now - lastTs) / 1000);
+      lastTs = now;
+      setSliceHeightMm((prev) => {
+        const start = prev >= topZ ? 0.8 : prev;
+        const speedMmPerSec = Math.max(4, topZ * 0.32);
+        const next = start + dt * speedMmPerSec;
+        return next >= topZ ? 0.8 : Number(next.toFixed(1));
+      });
+      rafId = requestAnimationFrame(step);
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [isAutoSlicing, currentPart.heightMm]);
 
   return (
     <div className={styles.workbench}>
-      {/* ============================================================= */}
-      {/* 1. TOP CONTROLS TOOLBAR                                       */}
-      {/* ============================================================= */}
-      <div className={styles.toolbar}>
-        {/* Left tools: Chassis Component Switcher */}
-        <div className={styles.tools}>
-          <div className={styles.toolGroup}>
+      <div className={styles.instrumentFrame}>
+        {/* ============================================================= */}
+        {/* 1. UNIFIED TOP ISLAND CONTROL BAR                             */}
+        {/* ============================================================= */}
+        <div className={styles.controlStrip}>
+          {/* Left: Segmented Fabricated Part Switcher (6 Parts) */}
+          <div className={styles.toolGroup} role="group" aria-label="Chassis fabricated components">
             {CHASSIS_COMPONENTS.map((part) => (
               <button
                 key={part.id}
@@ -82,384 +154,607 @@ export function FabricationWorkbench() {
                 aria-pressed={selectedPartId === part.id}
                 onClick={() => {
                   setSelectedPartId(part.id);
-                  if (part.id !== "full-frame") setExplodeAmount(0);
+                  setSupportStyle(part.recommendedSupport);
+                  setIsAutoSlicing(false);
+                  setSliceHeightMm(currentPrinter.bedMm[2]);
                 }}
               >
-                {part.id === "base-plate"
-                  ? "Lower Base"
-                  : part.id === "electronics-deck"
-                    ? "Middle Deck"
-                    : part.id === "sensor-mast"
-                      ? "Sensor Mast"
-                      : part.id === "motor-brackets"
-                        ? "Motor Mounts (4x)"
-                        : "Full Assembled Frame"}
+                {part.shortTabLabel}
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Right tools: Material, Orientation & Enclosure Toggles */}
-        <div className={styles.tools}>
-          {/* Material Selection Group */}
-          <div className={styles.toolGroup}>
-            {FABRICATION_MATERIALS.map((mat) => (
+          {/* Right: Inline Part Separation, Z-Slice Scrubber + Play, Material & Camera Toggles */}
+          <div className={styles.instrumentCluster}>
+            {/* Sub-Part Bed Spacing Scrubber */}
+            <div className={styles.inlineScrubber}>
               <button
-                key={mat.id}
                 type="button"
-                aria-pressed={selectedMaterialId === mat.id}
-                onClick={() => setSelectedMaterialId(mat.id)}
+                className={styles.flatBtn}
+                aria-pressed={explodeAmount > 0.01}
+                onClick={() => setExplodeAmount((prev) => (prev > 0.05 ? 0 : 0.65))}
+                title="Adjust sub-part spacing on build plate"
               >
-                {mat.name.split(" ")[0]}
+                Spacing
               </button>
-            ))}
-          </div>
-
-          {/* Orientation & Cage Toggles */}
-          <button
-            type="button"
-            aria-pressed={isRotated90}
-            onClick={() => setIsRotated90((r) => !r)}
-            title="Rotate part 90 degrees on bed"
-          >
-            {isRotated90 ? "Orient: 90°" : "Orient: 0°"}
-          </button>
-
-          <button
-            type="button"
-            aria-pressed={showBuildCage}
-            onClick={() => setShowBuildCage((c) => !c)}
-            title="Toggle 300×300×350mm build cage wireframe"
-          >
-            Cage
-          </button>
-        </div>
-      </div>
-
-      {/* ============================================================= */}
-      {/* 2. MAIN 3D WORKSPACE STAGE & SIDEBAR                          */}
-      {/* ============================================================= */}
-      <div className={styles.canvasRow}>
-        {/* Center Stage: Interactive Three.js 3D Viewport */}
-        <div className={styles.stage}>
-          <div className="relative h-full w-full">
-            <FabricationStage
-              selectedPartId={selectedPartId}
-              selectedMaterialId={selectedMaterialId}
-              isRotated90={isRotated90}
-              sliceHeightMm={sliceHeightMm}
-              explodeAmount={explodeAmount}
-              showBuildCage={showBuildCage}
-            />
-          </div>
-
-          {/* Stage Bottom Floating Telemetry Badge */}
-          <div className={styles.stageLabel}>
-            <div className="flex items-center gap-2 font-mono text-[10px] text-[#68655E]">
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${
-                  xyFits && zFits ? "bg-[#1F6B42]" : "bg-[#991F1F]"
-                }`}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={2}
+                value={Math.round(explodeAmount * 100)}
+                onChange={(e) => setExplodeAmount(Number(e.target.value) / 100)}
+                className={styles.scrubberSlider}
+                aria-label="Sub-part bed spacing percentage"
               />
-              <span className="font-semibold text-[#111319]">
-                {partX} × {partY} × {currentPart.heightMm} mm
-              </span>
-              <span>·</span>
-              <span>{metrics.bedUtilizationPercent}% PEI Bed Area</span>
+              <span className={styles.scrubberVal}>{Math.round(explodeAmount * 100)}%</span>
             </div>
 
-            <div className="flex items-center gap-2 font-mono text-[10px] text-[#68655E]">
-              <span>Infill: {infillPercent}%</span>
-              <span>·</span>
-              <strong className="text-[#111319] tabular-nums">
-                {metrics.massGrams} g · ₦{metrics.costNgn.toLocaleString()}
-              </strong>
+            {/* Z-Slice Cross-Section Scrubber + Layer Playback */}
+            <div className={styles.inlineScrubber}>
+              <button
+                type="button"
+                className={styles.flatBtn}
+                aria-pressed={isAutoSlicing}
+                onClick={() => {
+                  setIsAutoSlicing((playing) => {
+                    if (!playing && sliceHeightMm >= currentPart.heightMm) {
+                      setSliceHeightMm(1);
+                    }
+                    return !playing;
+                  });
+                }}
+                title="Animate layer-by-layer Z-slicing toolpath from bed y=0"
+              >
+                {isAutoSlicing ? "Pause Slice" : "Play Slice"}
+              </button>
+              <input
+                type="range"
+                min={0.8}
+                max={maxSliceTarget}
+                step={0.4}
+                value={Math.min(maxSliceTarget, sliceHeightMm)}
+                onChange={(e) => {
+                  setIsAutoSlicing(false);
+                  setSliceHeightMm(Number(e.target.value));
+                }}
+                className={styles.scrubberSlider}
+                aria-label="Z-slice height inspection plane"
+              />
+              <span className={styles.scrubberVal}>
+                {isSlicing ? `L${currentSliceLayer}/${metrics.layerCount}` : "Full"}
+              </span>
+            </div>
+
+            {/* Engineering Polymer / CNC Material Selector */}
+            <div className={styles.flatGroup} role="group" aria-label="Fabrication material">
+              {FABRICATION_MATERIALS.map((mat) => (
+                <button
+                  key={mat.id}
+                  type="button"
+                  className={styles.flatBtn}
+                  aria-pressed={selectedMaterialId === mat.id}
+                  onClick={() => {
+                    setSelectedMaterialId(mat.id);
+                    if (mat.type === "cnc-mill") {
+                      setPrinterProfileId("cnc-6040");
+                    } else if (printerProfileId === "cnc-6040") {
+                      setPrinterProfileId("voron-300");
+                    }
+                  }}
+                >
+                  {mat.shortLabel}
+                </button>
+              ))}
+            </div>
+
+            {/* Camera Angles & Bed Orientation */}
+            <div className={styles.flatGroup}>
+              {(["isometric", "top", "front", "side"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={styles.flatBtn}
+                  aria-pressed={cameraView === view}
+                  onClick={() => setCameraView(view)}
+                >
+                  {view === "isometric"
+                    ? "Iso"
+                    : view === "top"
+                      ? "Top"
+                      : view === "front"
+                        ? "Front"
+                        : "Side"}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={styles.flatBtn}
+                aria-pressed={isRotated90}
+                onClick={() => setIsRotated90((r) => !r)}
+                title="Rotate part arrangement 90° on build plate"
+              >
+                {isRotated90 ? "90°" : "0°"}
+              </button>
+              <button
+                type="button"
+                className={styles.flatBtn}
+                aria-pressed={showBuildCage}
+                onClick={() => setShowBuildCage((c) => !c)}
+                title="Toggle build volume wireframe cage"
+              >
+                Cage
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Right Inspector: Decluttered & Professional Specifications */}
-        <aside className={styles.inspector} aria-label="Chassis fabrication specifications">
-          <p className={styles.kicker}>
-            CHASSIS FABRICATION · {currentMaterial.name.toUpperCase()}
-          </p>
-          <h2>{currentPart.name}</h2>
-          <p className={styles.model}>{currentPart.subtitle}</p>
+        {/* ============================================================= */}
+        {/* 2. EDGE-TO-EDGE 3D SLICER STAGE & ARCHITECTURAL LEDGER PANE   */}
+        {/* ============================================================= */}
+        <div className={styles.canvasRow}>
+          {/* Left: Interactive 3D Slicer & Build Plate Viewport */}
+          <div className={styles.stage}>
+            <div>
+              <FabricationStage
+                selectedPartId={selectedPartId}
+                selectedMaterialId={selectedMaterialId}
+                isRotated90={isRotated90}
+                sliceHeightMm={isSlicing ? sliceHeightMm : currentPrinter.bedMm[2]}
+                explodeAmount={explodeAmount}
+                showBuildCage={showBuildCage}
+                infillPattern={infillPattern}
+                supportStyle={supportStyle}
+                adhesionType={adhesionType}
+                infillPercent={infillPercent}
+                wallLoops={wallLoops}
+                printerProfileId={printerProfileId}
+                cameraView={cameraView}
+              />
+            </div>
 
-          <div className={styles.provenance}>
-            {xyFits && zFits ? "CLEARS 300 × 300 × 350 MM ENVELOPE" : "EXCEEDS STANDARD 300 MM BED"}
+            {/* Quiet, card-free Stage Bottom Telemetry Line */}
+            <div className={styles.stageHud}>
+              <span>
+                <strong className="text-[#111319] tabular-nums">
+                  {partX} × {partY} × {currentPart.heightMm} mm
+                </strong>
+                {" · "}
+                {metrics.bedUtilizationPercent}% of {currentPrinter.bedMm[0]}×
+                {currentPrinter.bedMm[1]}mm Bed · {currentPart.subPartCount} nested parts on y=0
+              </span>
+
+              <span className="tabular-nums">
+                {isSlicing
+                  ? `Z = ${sliceHeightMm.toFixed(1)}mm (Layer ${currentSliceLayer}/${metrics.layerCount}) · `
+                  : ""}
+                {currentPattern.shortLabel} {infillPercent}% · {currentSupport.shortLabel} ·{" "}
+                <strong className="text-[#111319]">
+                  {metrics.massGrams} g{" "}
+                  {metrics.filamentMeters > 0 ? `(${metrics.filamentMeters} m)` : ""} ·{" "}
+                  {metrics.printTimeFormatted} · ₦{metrics.costNgn.toLocaleString()}
+                </strong>
+              </span>
+            </div>
           </div>
 
-          <p className={styles.note}>{currentPart.description}</p>
+          {/* Right: Hairline Architectural Slicer & CAM Specification Sheet */}
+          <aside className={styles.inspector} aria-label="Slicer and fabrication specification sheet">
+            <div className={styles.inspectorTop}>
+              {/* Kicker & Plain-Text Envelope Status */}
+              <div className={styles.kickerRow}>
+                <span className={styles.kicker}>
+                  SLICER &amp; CAM · {currentMaterial.shortLabel}
+                </span>
+                <span
+                  className={`${styles.envelopeStatus} ${
+                    metrics.fitsSelectedPrinter ? styles.envelopePass : styles.envelopeFail
+                  }`}
+                >
+                  {metrics.fitsSelectedPrinter
+                    ? `CLEARS ${currentPrinter.bedMm[0]}×${currentPrinter.bedMm[1]} BED`
+                    : `EXCEEDS ${currentPrinter.bedMm[0]}MM BED`}
+                </span>
+              </div>
 
-          {/* Inspector Navigation Tabs */}
-          <div className={styles.inspectorTabs}>
-            <button
-              type="button"
-              aria-pressed={inspectorTab === "fit"}
-              onClick={() => setInspectorTab("fit")}
-            >
-              Bed Fit & Bounds
-            </button>
-            <button
-              type="button"
-              aria-pressed={inspectorTab === "slicing"}
-              onClick={() => setInspectorTab("slicing")}
-            >
-              Slicing & Mass
-            </button>
-            <button
-              type="button"
-              aria-pressed={inspectorTab === "hardware"}
-              onClick={() => setInspectorTab("hardware")}
-            >
-              Hardware Fasteners
-            </button>
-          </div>
+              <div className={styles.titleRow}>
+                <h2>{currentPart.name}</h2>
+                <div className={styles.subtitle}>{currentPart.subtitle}</div>
+              </div>
 
-          {/* TAB 1: BED FIT & BOUNDS */}
-          {inspectorTab === "fit" && (
-            <div className="flex flex-col gap-2 pt-1">
-              <div className={styles.paramCard}>
-                <div className={styles.controlRow}>
-                  <span className={styles.controlLabel}>Footprint Extent (X × Y)</span>
-                  <span className={styles.controlValue}>
-                    {partX} × {partY} mm
+              {/* 4-Column Hairline Telemetry Strip */}
+              <div className={styles.metricsStrip}>
+                <div className={styles.metricCol}>
+                  <span className={styles.metricLabel}>Mass</span>
+                  <span className={styles.metricValue}>{metrics.massGrams} g</span>
+                  <span className={styles.metricSub}>{metrics.volumeCm3} cm³</span>
+                </div>
+
+                <div className={styles.metricCol}>
+                  <span className={styles.metricLabel}>
+                    {currentMaterial.type === "cnc-mill" ? "Billet" : "1.75mm Spool"}
                   </span>
+                  <span className={styles.metricValue}>
+                    {currentMaterial.type === "cnc-mill"
+                      ? `${currentPart.heightMm}mm Al`
+                      : `${metrics.filamentMeters} m`}
+                  </span>
+                  <span className={styles.metricSub}>{metrics.spoolsRequired} kg spool</span>
                 </div>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">Z-Axis Build Height</span>
-                  <span className="font-mono text-[10px]">{currentPart.heightMm} mm</span>
+
+                <div className={styles.metricCol}>
+                  <span className={styles.metricLabel}>Print Time</span>
+                  <span className={styles.metricValue}>{metrics.printTimeFormatted}</span>
+                  <span className={styles.metricSub}>{metrics.volumetricFlowMm3s} mm³/s</span>
                 </div>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">300 mm Bed Utilization</span>
-                  <span className="font-mono text-[10px]">{metrics.bedUtilizationPercent}%</span>
+
+                <div className={styles.metricCol}>
+                  <span className={styles.metricLabel}>BEME Cost</span>
+                  <span className={styles.metricValue}>₦{metrics.costNgn.toLocaleString()}</span>
+                  <span className={styles.metricSub}>
+                    ₦{(currentMaterial.costPerKgNgn / 1000).toFixed(0)}/g
+                  </span>
                 </div>
               </div>
 
-              {/* Explode Stack Slider for Full Frame */}
-              {selectedPartId === "full-frame" && (
-                <div className={styles.paramCard}>
-                  <div className={styles.controlRow}>
-                    <span className={styles.controlLabel}>Assembly Explode Stack</span>
-                    <span className={styles.controlValue}>{Math.round(explodeAmount * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.02"
-                    value={explodeAmount}
-                    onChange={(e) => setExplodeAmount(parseFloat(e.target.value))}
-                    className={styles.slider}
-                    aria-label="Explode assembly stack slider"
-                  />
-                  <div className={styles.pillTrack}>
-                    <button
-                      type="button"
-                      onClick={() => setExplodeAmount(0)}
-                      className={styles.pillBtn}
-                      aria-pressed={explodeAmount === 0}
-                    >
-                      Assembled (0%)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setExplodeAmount(0.5)}
-                      className={styles.pillBtn}
-                      aria-pressed={explodeAmount === 0.5}
-                    >
-                      50% Stack
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setExplodeAmount(1)}
-                      className={styles.pillBtn}
-                      aria-pressed={explodeAmount === 1}
-                    >
-                      100% Fully Exploded
-                    </button>
-                  </div>
+              {/* Flat Text Tabs */}
+              <div className={styles.flatTabs} role="tablist" aria-label="Slicer specification views">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={inspectorTab === "slicer"}
+                  aria-pressed={inspectorTab === "slicer"}
+                  className={styles.flatBtn}
+                  onClick={() => setInspectorTab("slicer")}
+                >
+                  Slicer &amp; Supports
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={inspectorTab === "machine"}
+                  aria-pressed={inspectorTab === "machine"}
+                  className={styles.flatBtn}
+                  onClick={() => setInspectorTab("machine")}
+                >
+                  Bed Layout &amp; Bounds
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={inspectorTab === "hardware"}
+                  aria-pressed={inspectorTab === "hardware"}
+                  className={styles.flatBtn}
+                  onClick={() => setInspectorTab("hardware")}
+                >
+                  Sub-Parts &amp; Fasteners
+                </button>
+              </div>
+
+              {/* ========================================================= */}
+              {/* TAB 1: SLICER PROCESS, INFILL, SUPPORTS & FEATURE LEDGER   */}
+              {/* ========================================================= */}
+              {inspectorTab === "slicer" && (
+                <div>
+                  <dl className={styles.ledger}>
+                    <div className={styles.ledgerRow}>
+                      <dt>Infill Pattern</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          {INFILL_PATTERNS.map((pat) => (
+                            <button
+                              key={pat.id}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={infillPattern === pat.id}
+                              onClick={() => setInfillPattern(pat.id)}
+                            >
+                              {pat.shortLabel}
+                            </button>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Infill Density</dt>
+                      <dd>
+                        <div className="flex items-center gap-2">
+                          <input
+                            id="infill-slider"
+                            type="range"
+                            min="15"
+                            max="100"
+                            step="5"
+                            value={infillPercent}
+                            onChange={(e) => setInfillPercent(parseInt(e.target.value, 10))}
+                            className={styles.scrubberSlider}
+                            style={{ flex: 1 }}
+                            aria-label="Infill density percentage"
+                          />
+                          <span className={styles.monoVal}>{infillPercent}%</span>
+                        </div>
+                        <div className={`${styles.inlineChoices} mt-1`}>
+                          {[15, 25, 40, 60, 100].map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={infillPercent === val}
+                              onClick={() => setInfillPercent(val)}
+                            >
+                              {val}%
+                            </button>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Support Type</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          {SUPPORT_STYLES.map((sup) => (
+                            <button
+                              key={sup.id}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={supportStyle === sup.id}
+                              onClick={() => setSupportStyle(sup.id)}
+                            >
+                              {sup.shortLabel}
+                            </button>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Bed Adhesion</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          {ADHESION_TYPES.map((adh) => (
+                            <button
+                              key={adh.id}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={adhesionType === adh.id}
+                              onClick={() => setAdhesionType(adh.id)}
+                            >
+                              {adh.shortLabel}
+                            </button>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Layer Height</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          {LAYER_HEIGHT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={layerHeightMm === opt.value}
+                              onClick={() => setLayerHeightMm(opt.value)}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                          <span className="text-[9.5px] text-[#68655E] font-mono">
+                            ({metrics.layerCount} layers)
+                          </span>
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Walls &amp; Skin</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          {[2, 3, 4, 5, 6].map((loops) => (
+                            <button
+                              key={loops}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={wallLoops === loops}
+                              onClick={() => setWallLoops(loops)}
+                            >
+                              {loops} Loops
+                            </button>
+                          ))}
+                          <span className="text-[9.5px] text-[#68655E] font-mono">
+                            ({(wallLoops * metrics.lineWidthMm).toFixed(2)}mm · {metrics.topBottomLayers} skin)
+                          </span>
+                        </div>
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {/* Hairline G-Code Feature Breakdown Table */}
+                  <table className={styles.breakdownTable} aria-label="G-code feature breakdown">
+                    <thead>
+                      <tr>
+                        <th>Toolpath Feature</th>
+                        <th>Mass</th>
+                        <th>Spool</th>
+                        <th>Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metrics.featureBreakdown.map((item) => (
+                        <tr key={item.feature}>
+                          <td className="font-semibold">{item.feature}</td>
+                          <td className="font-bold">
+                            {item.massGrams} g ({item.percentOfMass}%)
+                          </td>
+                          <td>{item.filamentMeters > 0 ? `${item.filamentMeters} m` : "—"}</td>
+                          <td>{formatPrintDuration(item.timeHours)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
 
-              {/* Slicing Height Indicator Slider */}
-              <div className={styles.paramCard}>
-                <div className={styles.controlRow}>
-                  <span className={styles.controlLabel}>Slicing Plane Z</span>
-                  <span className={styles.controlValue}>{sliceHeightMm} mm</span>
+              {/* ========================================================= */}
+              {/* TAB 2: BED ARRANGEMENT, ALIGNMENT, ORIENT & BOUNDS         */}
+              {/* ========================================================= */}
+              {inspectorTab === "machine" && (
+                <div>
+                  <dl className={styles.ledger}>
+                    <div className={styles.ledgerRow}>
+                      <dt>Machine</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          {PRINTER_PROFILES.map((prof) => (
+                            <button
+                              key={prof.id}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={printerProfileId === prof.id}
+                              onClick={() => setPrinterProfileId(prof.id)}
+                            >
+                              {prof.shortLabel}
+                            </button>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Bed Envelope</dt>
+                      <dd className={styles.monoVal}>
+                        {currentPrinter.bedMm[0]} × {currentPrinter.bedMm[1]} ×{" "}
+                        {currentPrinter.bedMm[2]} mm
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Part Bounds</dt>
+                      <dd className={styles.monoVal}>
+                        {partX} × {partY} × {currentPart.heightMm} mm ({metrics.bedUtilizationPercent}%
+                        area)
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Orientation</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          <button
+                            type="button"
+                            className={styles.flatBtn}
+                            aria-pressed={!isRotated90}
+                            onClick={() => setIsRotated90(false)}
+                          >
+                            0° Align X ({currentPart.lengthMm}×{currentPart.widthMm}mm)
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.flatBtn}
+                            aria-pressed={isRotated90}
+                            onClick={() => setIsRotated90(true)}
+                          >
+                            90° Align Z ({currentPart.widthMm}×{currentPart.lengthMm}mm)
+                          </button>
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Bed Nesting</dt>
+                      <dd>
+                        <div className={styles.inlineChoices}>
+                          {[
+                            { val: 0, label: "Compact Nest (12mm gap)" },
+                            { val: 0.5, label: "Medium Spread (24mm)" },
+                            { val: 1, label: "Wide Spread (40mm)" }
+                          ].map((preset) => (
+                            <button
+                              key={preset.val}
+                              type="button"
+                              className={styles.flatBtn}
+                              aria-pressed={Math.abs(explodeAmount - preset.val) < 0.03}
+                              onClick={() => setExplodeAmount(preset.val)}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>First Layer</dt>
+                      <dd className={styles.monoVal}>
+                        100% Seated at y = 0.0 mm · Zero Mid-Air Overlaps
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Temperatures</dt>
+                      <dd className={styles.monoVal}>
+                        {currentMaterial.nozzleTemp} / {currentMaterial.bedTemp} /{" "}
+                        {currentMaterial.chamberTemp}
+                      </dd>
+                    </div>
+
+                    <div className={styles.ledgerRow}>
+                      <dt>Feedrates</dt>
+                      <dd className={styles.monoVal}>
+                        {currentPrinter.outerWallSpeedMms} wall · {currentPrinter.infillSpeedMms}{" "}
+                        infill · {currentPrinter.travelSpeedMms} travel mm/s
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className={styles.summaryNote}>{currentSupport.description}</p>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="350"
-                  step="5"
-                  value={sliceHeightMm}
-                  onChange={(e) => setSliceHeightMm(parseInt(e.target.value, 10))}
-                  className={styles.slider}
-                  aria-label="Slicing height inspection plane slider"
-                />
-              </div>
+              )}
 
-              {/* Status Rationale Box */}
-              <div
-                className={`${styles.statusCard} ${
-                  xyFits && zFits ? styles.statusGood : styles.statusError
-                }`}
-              >
-                {xyFits && zFits ? (
-                  <span className="flex items-center gap-2 font-semibold">
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#1F6B42]" />
-                    Component bounds fit safely within the 300 × 300 × 350 mm volume.
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2 font-semibold">
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#991F1F]" />
-                    Total envelope exceeds 300 mm bed standard. Modular division required.
-                  </span>
-                )}
-                <p className="mt-1 text-[10px] text-[#4A4740]">
-                  {selectedPartId === "full-frame"
-                    ? "The complete assembled rover is 340 × 280 × 220 mm. By dividing into modular decks (280×240 mm lower base, 260×200 mm middle deck, and 140×110 mm mast), each individual plate prints cleanly on the 300 mm build plate."
-                    : "Sized for rapid additive fabrication on standard large-format FFF beds (e.g. Voron 2.4 300, Bambu Lab X1/P1, or Creality K1 Max)."}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                className={styles.seat}
-                onClick={() => setIsRotated90((r) => !r)}
-              >
-                {isRotated90 ? "Restore Initial 0° Orientation" : "Rotate Component 90° on Bed"}
-              </button>
+              {/* ========================================================= */}
+              {/* TAB 3: SUB-PARTS, HARDWARE FASTENERS & BEME BOM           */}
+              {/* ========================================================= */}
+              {inspectorTab === "hardware" && (
+                <div>
+                  <dl className={styles.ledger}>
+                    <div className={styles.ledgerRow}>
+                      <dt>Process</dt>
+                      <dd>{currentPart.manufacturingMethod}</dd>
+                    </div>
+                    <div className={styles.ledgerRow}>
+                      <dt>Interfaces</dt>
+                      <dd className={styles.monoVal}>{currentPart.mountingHoles}</dd>
+                    </div>
+                    <div className={styles.ledgerRow}>
+                      <dt>Nested Zones ({currentPart.subPartCount})</dt>
+                      <dd>
+                        {currentPart.subPartNames.map((name, idx) => (
+                          <div key={idx} className="py-0.5 font-mono text-[10px]">
+                            {idx + 1}. {name}
+                          </div>
+                        ))}
+                      </dd>
+                    </div>
+                    <div className={styles.ledgerRow}>
+                      <dt>Fasteners</dt>
+                      <dd>
+                        {currentPart.fasteners.map((fastener, idx) => (
+                          <div key={idx} className="py-0.5 font-mono text-[10px]">
+                            {fastener}
+                          </div>
+                        ))}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className={styles.summaryNote}>{currentPart.description}</p>
+                </div>
+              )}
             </div>
-          )}
-
-          {/* TAB 2: SLICING & MASS ESTIMATION */}
-          {inspectorTab === "slicing" && (
-            <div className="flex flex-col gap-2 pt-1">
-              {/* Infill Density Slider */}
-              <div className={styles.paramCard}>
-                <div className={styles.controlRow}>
-                  <label htmlFor="infill-slider" className={styles.controlLabel}>
-                    Gyroid Infill Density
-                  </label>
-                  <span className={styles.controlValue}>{infillPercent}%</span>
-                </div>
-                <input
-                  id="infill-slider"
-                  type="range"
-                  min="15"
-                  max="100"
-                  step="5"
-                  value={infillPercent}
-                  onChange={(e) => setInfillPercent(parseInt(e.target.value, 10))}
-                  className={styles.slider}
-                  aria-label="Infill density slider percentage"
-                />
-                <div className={styles.pillTrack}>
-                  {[15, 25, 40, 60, 100].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setInfillPercent(val)}
-                      className={styles.pillBtn}
-                      aria-pressed={infillPercent === val}
-                    >
-                      {val}% {val === 25 ? "(Std)" : val === 100 ? "(Solid)" : ""}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Perimeter Wall Loops */}
-              <div className={styles.paramCard}>
-                <div className={styles.controlRow}>
-                  <label htmlFor="wall-loops-slider" className={styles.controlLabel}>
-                    Wall Perimeters (0.4mm Nozzle)
-                  </label>
-                  <span className={styles.controlValue}>{wallLoops} Loops ({(wallLoops * 0.4).toFixed(1)}mm)</span>
-                </div>
-                <input
-                  id="wall-loops-slider"
-                  type="range"
-                  min="2"
-                  max="6"
-                  step="1"
-                  value={wallLoops}
-                  onChange={(e) => setWallLoops(parseInt(e.target.value, 10))}
-                  className={styles.slider}
-                  aria-label="Wall perimeter count slider"
-                />
-              </div>
-
-              {/* Quantitative Metrics Readout */}
-              <div className={styles.paramCard}>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">Material Density</span>
-                  <span className="font-mono text-[10px] font-semibold">{currentMaterial.densityGcm3} g/cm³</span>
-                </div>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">Calculated Part Mass</span>
-                  <span className="font-mono text-[11px] font-bold text-[#111319]">{metrics.massGrams} grams</span>
-                </div>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">Estimated Print Duration</span>
-                  <span className="font-mono text-[10px] font-semibold">{metrics.printTimeHours} hours</span>
-                </div>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">BEME Material Cost</span>
-                  <span className="font-mono text-[11px] font-bold text-[#1F6B42]">₦{metrics.costNgn.toLocaleString()}</span>
-                </div>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">Nozzle / Bed Temperature</span>
-                  <span className="font-mono text-[10px]">{currentMaterial.nozzleTemp} / {currentMaterial.bedTemp}</span>
-                </div>
-                <div className={styles.controlRow}>
-                  <span className="text-[10px] text-[#68655E]">Tensile Yield Strength</span>
-                  <span className="font-mono text-[10px]">{currentMaterial.tensileYieldMpa} MPa</span>
-                </div>
-              </div>
-
-              <div className="rounded-[12px] bg-[#FFFFFF] p-3 border border-[#D0CBC0] text-[10px] text-[#68655E] leading-relaxed">
-                <span className="font-bold text-[#111319]">BEME Cost Calculation: </span>
-                Computed from BEME Appendix D Item 26 rate of ₦27,000 / 1 kg spool (₦27.00 per gram) for structural PETG carbon-fiber composite.
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: HARDWARE FASTENERS & BOM */}
-          {inspectorTab === "hardware" && (
-            <div className="flex flex-col gap-2 pt-1">
-              <div className={styles.paramCard}>
-                <span className={styles.controlLabel}>Mounting Interfaces & Holes</span>
-                <span className="font-mono text-[11px] font-semibold text-[#111319] pt-1">
-                  {currentPart.mountingHoles}
-                </span>
-                <span className="text-[10px] text-[#68655E] pt-1">
-                  Manufacturing: {currentPart.manufacturingMethod}
-                </span>
-              </div>
-
-              <div className={styles.paramCard}>
-                <span className={styles.controlLabel}>Required Fasteners & Hardware</span>
-                <ul className="flex flex-col gap-2 pt-1 text-[11px] text-[#111319]">
-                  {currentPart.fasteners.map((fastener, idx) => (
-                    <li key={idx} className="flex items-start gap-2 border-b border-[#E5E1D8] pb-1.5 last:border-0 last:pb-0">
-                      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#111319] mt-1.5" />
-                      <span className="font-mono text-[10px]">{fastener}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="rounded-[12px] bg-[#FFFFFF] p-3 border border-[#D0CBC0] text-[10px] text-[#68655E] leading-relaxed">
-                <span className="font-bold text-[#111319]">Mechanical Assembly Protocol: </span>
-                All M3 fasteners thread into brass heat-set inserts melted into 4.2 mm counter-bored bosses using a standard soldering iron at 260°C. Inserts provide &gt;1.5 kN pull-out resistance to prevent vibration loosening during mecanum omnidirectional travel.
-              </div>
-            </div>
-          )}
-        </aside>
+          </aside>
+        </div>
       </div>
     </div>
   );

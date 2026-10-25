@@ -1,583 +1,476 @@
 .workbench {
-  --pw-ink: #111319;
-  --pw-muted: #68655e;
-  --pw-line: #d0cbc0;
-  --pw-paper: #fff;
-  --pw-red: #991f1f;
-  --pw-amber: #a87914;
-  --pw-green: #1f6b42;
-  color: var(--pw-ink);
+  color: var(--sonaris-studio-ink);
   min-width: 0;
   user-select: none;
-}
-
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 0 0 10px;
-}
-
-.tools {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.toolGroup {
-  display: inline-flex;
-  align-items: center;
-  background: #d8d4ca;
-  border: 1px solid #c5bfb3;
-  border-radius: 9999px;
-  padding: 2px;
-  gap: 2px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.toolGroup button {
-  background: transparent;
-  min-height: 28px;
-  padding: 3px 12px;
-  border-radius: 9999px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  color: #55524b;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.toolGroup button:hover {
-  background: rgba(255, 255, 255, 0.5);
-  color: #111319;
-}
-
-.toolGroup button[aria-pressed="true"] {
-  background: var(--pw-ink);
-  color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.workbench button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 9999px;
-  min-height: 30px;
-  padding: 4px 13px;
-  background: #ffffff;
-  color: #4a4740;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  border: 1px solid #c8c3b8;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.workbench button:hover {
-  background: #faf8f4;
-  border-color: #b5afa3;
-  color: var(--pw-ink);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-}
-
-.workbench button:active {
-  transform: scale(0.98);
-}
-
-.workbench button[aria-pressed="true"] {
-  background: var(--pw-ink);
-  color: white;
-  border-color: var(--pw-ink);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.workbench button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.workbench :is(button, input, select, a):focus-visible {
-  outline: 2px solid var(--pw-red);
-  outline-offset: 2px;
-}
-
-.canvasRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  border: 1px solid var(--pw-line);
-  border-radius: 24px;
-  overflow: hidden;
-  background: #e9e5dc;
-}
-
-.stage {
-  position: relative;
-  height: clamp(520px, 68vh, 740px);
-  min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 8px;
 }
 
-.stage > div:first-child {
-  height: 100%;
-  width: 100%;
-}
-
-.stageLabel {
-  position: absolute;
-  inset: auto 12px 46px;
+/* ============================================================= */
+/* 1. TOP OPERATIONAL BAR (Matching SONARIS Segmented Islands)   */
+/* ============================================================= */
+.topBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  pointer-events: none;
-  background: rgba(229, 225, 216, 0.94);
-  border: 1px solid rgba(208, 203, 192, 0.8);
-  border-radius: 999px;
-  padding: 5px 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  z-index: 10;
-}
-
-.componentDock {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 8px 12px;
-  background: rgba(229, 225, 216, 0.96);
-  border-top: 1px solid var(--pw-line);
-  backdrop-filter: blur(8px);
-  scrollbar-width: none;
-  z-index: 15;
-}
-
-.componentDock::-webkit-scrollbar {
-  display: none;
-}
-
-.dockPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 9999px;
-  background: #ffffff;
-  border: 1px solid #c8c3b8;
-  color: #4a4740;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 8px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
-.dockPill:hover {
-  background: #faf8f4;
-  border-color: #111319;
-  color: var(--pw-ink);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
-}
-
-.dockPill[aria-pressed="true"] {
-  background: #111319;
-  color: white;
-  border-color: #111319;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-}
-
-.dockBadge {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 9px;
-  font-weight: 700;
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.dockPill[aria-pressed="true"] .dockBadge {
-  opacity: 0.85;
-  color: #e5ded0;
-}
-
-.explodeOverlay {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  width: min(260px, calc(100% - 24px));
+.barCluster {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-radius: 999px;
-  border: 1px solid var(--pw-line);
-  background: rgba(255, 255, 255, 0.94);
-  padding: 5px 12px;
-  backdrop-filter: blur(4px);
-  z-index: 10;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.explodeOverlay span {
-  font-size: 10px;
+.segmentedGroup {
+  display: inline-flex;
+  align-items: center;
+  background: var(--sonaris-track);
+  border: 1px solid var(--sonaris-border-strong);
+  border-radius: 9999px;
+  padding: 2px;
+  gap: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.segmentedGroup::-webkit-scrollbar {
+  display: none;
+}
+
+.segmentedBtn {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.35);
+  border: none;
+  border-radius: 2px;
+  min-height: 26px;
+  padding: 2px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
   font-weight: 700;
-  color: var(--pw-ink);
+  letter-spacing: 0.01em;
+  color: var(--sonaris-studio-body);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
-.explodeSlider {
-  flex: 1;
+.segmentedBtn:first-child {
+  border-radius: 9999px 2px 2px 9999px;
+  padding-left: 12px;
+}
+
+.segmentedBtn:last-child {
+  border-radius: 2px 9999px 9999px 2px;
+  padding-right: 12px;
+}
+
+.segmentedBtn:only-child {
+  border-radius: 9999px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.segmentedBtn:hover {
+  color: var(--sonaris-studio-ink);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.segmentedBtn[aria-pressed="true"] {
+  background: var(--sonaris-studio-ink);
+  color: var(--sonaris-ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.segmentedBtnEstop[aria-pressed="true"] {
+  background: var(--sonaris-red);
+  color: var(--sonaris-ink);
+}
+
+.btnSubValue {
+  font-size: 8.5px;
+  font-weight: 600;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+}
+
+.segmentedBtn[aria-pressed="true"] .btnSubValue {
+  opacity: 0.9;
+  color: var(--sonaris-orange);
+}
+
+.segmentedBtnEstop[aria-pressed="true"] .btnSubValue {
+  color: var(--sonaris-ink);
+}
+
+.lensBadgeAlert {
+  background: var(--sonaris-red);
+  color: var(--sonaris-ink);
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 700;
+}
+
+.rangeInput {
+  width: clamp(72px, 9vw, 110px);
   height: 4px;
   appearance: none;
-  -webkit-appearance: none;
-  background: var(--pw-line);
+  background: var(--sonaris-border-strong);
   border-radius: 999px;
   outline: none;
   cursor: pointer;
 }
 
-.explodeSlider::-webkit-slider-thumb {
-  -webkit-appearance: none;
+.rangeInput::-webkit-slider-thumb {
   appearance: none;
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: var(--pw-ink);
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--sonaris-red);
+  border: 1.5px solid var(--sonaris-card);
   cursor: pointer;
-  transition: transform 0.1s ease;
 }
 
-.explodeSlider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-}
-
-.explodeSlider::-moz-range-thumb {
-  width: 13px;
-  height: 13px;
+.rangeInput::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: var(--pw-ink);
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--sonaris-red);
+  border: 1.5px solid var(--sonaris-card);
   cursor: pointer;
-  transition: transform 0.1s ease;
 }
 
-.explodeVal {
+/* ============================================================= */
+/* 2. SPACIOUS 3D ELECTRICAL BENCH STAGE                         */
+/* ============================================================= */
+.stageShell {
+  position: relative;
+  width: 100%;
+  height: clamp(320px, 56dvh, 620px);
+  border: 1px solid var(--sonaris-border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--sonaris-viewport);
+  display: flex;
+  flex-direction: column;
+}
+
+.stageCanvas {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+}
+
+.stageFooter {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: none;
+  z-index: 10;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--pw-ink);
-  width: 28px;
-  text-align: right;
+  font-size: 9.5px;
+  color: var(--sonaris-studio-muted);
 }
 
-.inspector {
-  max-height: clamp(520px, 68vh, 740px);
-  overflow-y: auto;
-  background: #f4f1eb;
-  padding: 18px;
-  border-left: 1px solid var(--pw-line);
-  scrollbar-width: thin;
-  user-select: text;
+.railKey {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.kicker {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--pw-muted);
-  font-weight: 700;
-}
-
-.inspector h2 {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  margin-top: 2px;
-}
-
-.model {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  color: var(--pw-muted);
-  line-height: 1.4;
-  margin-top: 2px;
-}
-
-.provenance {
+.legendSwatch {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin: 8px 0;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--pw-line);
+}
+
+.swatchLine {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.swatch12V {
+  background: var(--sonaris-red);
+}
+
+.swatch5V {
+  background: var(--sonaris-yellow);
+}
+
+.swatchSignal {
+  background: var(--sonaris-studio-ink);
+}
+
+/* ============================================================= */
+/* 3. RESPONSIVE, DYNAMIC BOTTOM INSTRUMENT ISLAND               */
+/* ============================================================= */
+.deckGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr));
+  border: 1px solid var(--sonaris-border);
+  border-radius: 18px;
+  background: var(--sonaris-panel);
+  overflow: hidden;
+  user-select: text;
+}
+
+.flatCard {
+  padding: clamp(10px, 1.2vw, 14px) clamp(12px, 1.5vw, 16px);
+  border-right: 1px solid var(--sonaris-border);
+  border-bottom: 1px solid var(--sonaris-border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 7px;
+  min-width: 0;
+}
+
+.flatCard:last-child {
+  border-right: none;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--sonaris-border);
+}
+
+.cardKicker {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--pw-red);
+  letter-spacing: 0.08em;
+  color: var(--sonaris-orange);
 }
 
-.note {
-  font-size: 11px;
-  line-height: 1.5;
-  color: #4a4740;
+.cardStatus {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--sonaris-studio-muted);
 }
 
-.source {
+.cardStatusAlert {
+  color: var(--sonaris-red);
+}
+
+.cardStatusOk {
+  color: var(--sonaris-green);
+}
+
+.nodeStepBar {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
-  font-size: 10px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  flex-wrap: wrap;
 }
 
-.inspectorTabs {
-  display: flex;
-  gap: 2px;
-  margin: 14px 0 12px;
-  padding: 3px;
-  border-radius: 9999px;
-  background: #d8d4ca;
-  border: 1px solid #c5bfb3;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.inspectorTabs button {
-  flex: 1;
-  min-height: 28px !important;
-  padding: 4px 8px !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  border-radius: 9999px !important;
-  background: transparent !important;
-  color: #55524b !important;
-  border: none !important;
-  box-shadow: none !important;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.inspectorTabs button:hover {
-  color: #111319 !important;
-  background: rgba(255, 255, 255, 0.4) !important;
-}
-
-.inspectorTabs button[aria-pressed="true"] {
-  background: #111319 !important;
-  color: #ffffff !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
-}
-
-.placement {
-  border-top: 1px solid var(--pw-line);
-  padding: 7px 0;
-  margin-top: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 10px;
-  color: var(--pw-muted);
-}
-
-.placement span {
-  font-size: 10px;
-  color: var(--pw-muted);
-}
-
-.placement strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--pw-ink);
-}
-
-.workbench .seat {
-  margin-top: 14px;
-  width: 100%;
-  min-height: 36px;
-  font-size: 11px;
-  font-weight: 600;
-  justify-content: center;
-  background: var(--pw-ink);
-  color: #ffffff;
-  border: none;
-  border-radius: 9999px;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: opacity 0.15s, transform 0.1s;
-}
-
-.workbench .seat:hover {
-  opacity: 0.92;
-  color: #ffffff;
-  background: var(--pw-ink);
-}
-
-.workbench .seat:active {
-  transform: scale(0.99);
-}
-
-.simBox {
-  background: #ffffff;
-  border: 1px solid var(--pw-line);
-  border-radius: 14px;
-  padding: 11px 13px;
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-}
-
-.simHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.stepBtn {
+  appearance: none;
+  background: var(--sonaris-track);
+  border: 1px solid var(--sonaris-border-strong);
+  border-radius: 4px;
+  padding: 2px 7px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 9px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--pw-muted);
+  color: var(--sonaris-studio-ink);
+  cursor: pointer;
 }
 
-.awgGrid {
+.stepBtn:hover {
+  border-color: var(--sonaris-studio-ink);
+}
+
+.stepBtnAlert {
+  background: var(--sonaris-red);
+  border-color: var(--sonaris-red);
+  color: var(--sonaris-ink);
+}
+
+.cardTitleRow {
   display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 4px;
 }
 
-.awgPill {
-  min-height: 24px !important;
-  padding: 3px 9px !important;
-  font-size: 9px !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-  font-weight: 700 !important;
-  border-radius: 9999px !important;
-  border: 1px solid #d0cbc0 !important;
-  background: #ffffff !important;
-  color: #4a4740 !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-  transition: all 0.15s ease !important;
+.cardTitle {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--sonaris-studio-ink);
 }
 
-.awgPill:hover {
-  background: #f5f2eb !important;
-  color: #111319 !important;
-  border-color: #111319 !important;
+.cardSubtitle {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
+  color: var(--sonaris-studio-muted);
 }
 
-.awgPill[aria-pressed="true"] {
-  background: var(--pw-ink) !important;
-  color: #ffffff !important;
-  border-color: var(--pw-ink) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18) !important;
-}
-
-.socPills {
+/* Hairline Rows inside Flat Cards */
+.hairlineList {
   display: flex;
-  gap: 3px;
-  margin-top: 4px;
-  background: #eeeae1;
-  padding: 2px;
-  border-radius: 9999px;
-  border: 1px solid #d5d0c6;
+  flex-direction: column;
 }
 
-.socPill {
-  flex: 1;
-  min-height: 24px !important;
-  padding: 2px 6px !important;
-  font-size: 9px !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-  font-weight: 700 !important;
-  border-radius: 9999px !important;
-  border: none !important;
-  background: transparent !important;
-  color: #68655e !important;
-  box-shadow: none !important;
-  transition: all 0.15s ease !important;
-}
-
-.socPill:hover {
-  color: #111319 !important;
-  background: rgba(255, 255, 255, 0.5) !important;
-}
-
-.socPill[aria-pressed="true"] {
-  background: var(--pw-ink) !important;
-  color: #ffffff !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
-}
-
-.pinoutGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.pinoutRow {
+.hairlineRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #ffffff;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid #dcd7ce;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 3.5px 0;
+  border-bottom: 1px solid var(--sonaris-border);
+  font-size: 10px;
+}
+
+.hairlineRow:last-child {
+  border-bottom: none;
+}
+
+.hairlineRow span {
+  color: var(--sonaris-studio-muted);
+}
+
+.hairlineRow strong {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-}
-
-.pinoutRow span:first-child {
   font-weight: 700;
-  color: var(--pw-ink);
+  font-variant-numeric: tabular-nums;
+  color: var(--sonaris-studio-ink);
+  text-align: right;
 }
 
-.pinoutRow span:last-child {
-  color: var(--pw-muted);
+/* Responsive Multi-Conductor & Pinout Grid (shows all conductors/pins without truncation) */
+.conductorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 3px 10px;
+  border-top: 1px solid var(--sonaris-border);
+  padding-top: 4px;
 }
 
-@media (max-width: 960px) {
-  .canvasRow {
-    grid-template-columns: 1fr;
-  }
-  .stage {
-    height: clamp(380px, 52vh, 500px);
-  }
-  .inspector {
-    border-left: 0;
-    border-top: 1px solid var(--pw-line);
-    max-height: 380px;
-  }
+.conductorItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--sonaris-border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+}
+
+.conductorNumber {
+  font-weight: 700;
+  color: var(--sonaris-orange);
+  flex-shrink: 0;
+}
+
+.conductorSignal {
+  font-weight: 600;
+  color: var(--sonaris-studio-ink);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Interactive Attached Harness Pills for Selected Component */
+.attachedHarnessBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.harnessChip {
+  appearance: none;
+  background: var(--sonaris-track);
+  border: 1px solid var(--sonaris-border-strong);
+  border-radius: 999px;
+  padding: 1.5px 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--sonaris-studio-ink);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.harnessChip:hover {
+  border-color: var(--sonaris-studio-ink);
+}
+
+.harnessChipCut {
+  background: var(--sonaris-red);
+  border-color: var(--sonaris-red);
+  color: var(--sonaris-ink);
+  text-decoration: line-through;
+}
+
+/* Fault Injection / Protection Toggle Rows */
+.faultToggleRow {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--sonaris-border);
+  padding: 4px 2px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
+  color: var(--sonaris-studio-ink);
+  text-align: left;
+  transition: color 0.12s ease;
+}
+
+.faultToggleRow:last-child {
+  border-bottom: none;
+}
+
+.faultToggleRow:hover {
+  color: var(--sonaris-red);
+}
+
+.badgeOk {
+  font-weight: 700;
+  color: var(--sonaris-green);
+}
+
+.badgeFault {
+  font-weight: 700;
+  color: var(--sonaris-red);
 }

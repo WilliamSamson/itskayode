@@ -50,6 +50,13 @@ const SUBSYSTEM_FILTERS: {
 
 const EMPTY_CONNECTIONS: AssemblyConnection[] = [];
 const NOOP_PORT = () => {};
+const BODY_PART_IDS = ["shell", "bumper"];
+const NO_HIDDEN_PARTS: string[] = [];
+const SHELL_FINISHES = [
+  { hex: 0xded8ca, css: "#DED8CA", label: "Studio Ivory shell" },
+  { hex: 0x34393f, css: "#34393F", label: "Stealth Graphite shell" },
+  { hex: 0xc8bf9f, css: "#C8BF9F", label: "Desert Sand shell" }
+] as const;
 
 export function AssemblyWorkbench({ category: _category = "all" }: { category?: string } = {}) {
   const [state, setState] = useState<AssemblyState>(createAssemblyState);
@@ -58,6 +65,8 @@ export function AssemblyWorkbench({ category: _category = "all" }: { category?: 
   const [explodeRatio, setExplodeRatio] = useState(0);
   const [view3D, setView3D] = useState<"top" | "isometric" | "front">("isometric");
   const [showHarness, setShowHarness] = useState(false);
+  const [showBody, setShowBody] = useState(true);
+  const [shellColor, setShellColor] = useState<number>(0xded8ca);
   const [activeGroup, setActiveGroup] = useState<"all" | AssemblyPart["group"]>("all");
   const [running, setRunning] = useState(false);
 
@@ -237,6 +246,15 @@ export function AssemblyWorkbench({ category: _category = "all" }: { category?: 
               <button
                 type="button"
                 className={styles.flatBtn}
+                aria-pressed={showBody}
+                onClick={() => setShowBody((v) => !v)}
+                title="Show or hide the removable body shell and bumper"
+              >
+                Body
+              </button>
+              <button
+                type="button"
+                className={styles.flatBtn}
                 aria-pressed={showHarness}
                 onClick={() => setShowHarness((v) => !v)}
               >
@@ -254,6 +272,26 @@ export function AssemblyWorkbench({ category: _category = "all" }: { category?: 
                 Reset
               </button>
             </div>
+
+            {showBody && (
+              <div className="flex items-center gap-1.5 pl-1" role="group" aria-label="Body shell finish">
+                {SHELL_FINISHES.map((sw) => (
+                  <button
+                    key={sw.hex}
+                    type="button"
+                    aria-label={sw.label}
+                    aria-pressed={shellColor === sw.hex}
+                    onClick={() => setShellColor(sw.hex)}
+                    style={{ backgroundColor: sw.css }}
+                    className={`h-5 w-5 rounded-full border transition-transform ${
+                      shellColor === sw.hex
+                        ? "scale-110 border-[#991F1F] ring-2 ring-[#991F1F]/35"
+                        : "border-[#9E988E] opacity-80 hover:opacity-100"
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -277,6 +315,8 @@ export function AssemblyWorkbench({ category: _category = "all" }: { category?: 
               mode="orbit"
               activeGroup={activeGroup}
               running={running}
+              hiddenPartIds={showBody ? NO_HIDDEN_PARTS : BODY_PART_IDS}
+              shellColor={shellColor}
             />
 
             <div className={styles.stageHud}>

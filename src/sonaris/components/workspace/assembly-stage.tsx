@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { AssemblyPart } from "@/sonaris/lib/sonaris-assembly";
-import { createAssemblyModel } from "./assembly-models";
+import { createAssemblyModel, createStudioEnvMap } from "./assembly-models";
 
 type Position = [number, number, number];
 
@@ -24,6 +24,10 @@ export interface AssemblyStageProps {
   running: boolean;
   pendingPort?: { partId: string; portId: string } | null;
   onDropPart?: (id: string, position: Position) => void;
+  /** Parts hidden independently of the subsystem filter (e.g. the removable body shell). */
+  hiddenPartIds?: string[];
+  /** Optional custom hex color for the body shell & deck ivory finish. */
+  shellColor?: number;
 }
 
 interface PartEntry {
@@ -44,7 +48,7 @@ interface WireEntry {
 
 interface KineticNode {
   object: THREE.Object3D;
-  type: "wheel" | "scanner";
+  type: "wheel" | "scanner" | "tilt";
 }
 
 interface SceneState {
@@ -120,7 +124,7 @@ function buildParts(state: SceneState, props: AssemblyStageProps) {
 
   for (const part of props.parts) {
     const group = new THREE.Group();
-    const model = createAssemblyModel(part);
+    const model = createAssemblyModel(part, props.shellColor ?? 0xded8ca);
     group.userData.partId = part.id;
     group.rotation.set(...(part.rotation.map(THREE.MathUtils.degToRad) as Position));
     group.add(model);
@@ -133,6 +137,8 @@ function buildParts(state: SceneState, props: AssemblyStageProps) {
         state.kineticNodes.push({ object: node, type: "wheel" });
       } else if (node.userData.motion === "scanner") {
         state.kineticNodes.push({ object: node, type: "scanner" });
+      } else if (node.userData.motion === "tilt") {
+        state.kineticNodes.push({ object: node, type: "tilt" });
       }
       if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
         if (!seenMat.has(node.material)) {
@@ -169,7 +175,9 @@ function buildParts(state: SceneState, props: AssemblyStageProps) {
       target.addScaledVector(explodeVec, eAmount);
     }
     group.position.copy(target);
-    group.visible = props.activeGroup === "all" || props.activeGroup === part.group;
+    group.visible =
+      (props.activeGroup === "all" || props.activeGroup === part.group) &&
+      !props.hiddenPartIds?.includes(part.id);
 
     state.content.add(group);
     state.entries.set(part.id, {
@@ -251,6 +259,8 @@ export function AssemblyStage(props: AssemblyStageProps) {
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.06;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.domElement.style.touchAction = "none";
     renderer.domElement.style.cursor = "grab";
@@ -261,6 +271,10 @@ export function AssemblyStage(props: AssemblyStageProps) {
     element.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
+    const envMap = createStudioEnvMap(renderer);
+    if (envMap) {
+      scene.environment = envMap;
+    }
     const camera = new THREE.PerspectiveCamera(32, 1, 1, 10000);
     camera.position.set(1100, 900, 1100);
 
@@ -387,7 +401,9 @@ export function AssemblyStage(props: AssemblyStageProps) {
           if (k.type === "wheel") {
             k.object.rotation.z -= dt * 2.0;
           } else if (k.type === "scanner") {
-            k.object.rotation.y += dt * 3.2;
+            k.object.rotation.y += dt * 4.5;
+          } else if (k.type === "tilt") {
+            k.object.rotation.z = Math.sin(now * 0.0018) * 0.36;
           }
         }
       }
@@ -722,7 +738,7 @@ export function AssemblyStage(props: AssemblyStageProps) {
     buildParts(state, props);
     buildWires(state, props.connections);
     state.wake();
-  }, [ready, props.parts]);
+  }, [ready, props.parts, props.shellColor]);
 
   useEffect(() => {
     const state = runtime.current;
@@ -743,7 +759,8 @@ export function AssemblyStage(props: AssemblyStageProps) {
         entry.target.addScaledVector(entry.explodeVec, eAmount);
       }
       const nextVisible =
-        props.activeGroup === "all" || props.activeGroup === entry.part.group;
+        (props.activeGroup === "all" || props.activeGroup === entry.part.group) &&
+        !props.hiddenPartIds?.includes(entry.part.id);
       if (entry.group.visible !== nextVisible) {
         entry.group.visible = nextVisible;
         visibilityChanged = true;
@@ -760,7 +777,8 @@ export function AssemblyStage(props: AssemblyStageProps) {
     props.positions,
     props.exploded,
     props.explodeAmount,
-    props.activeGroup
+    props.activeGroup,
+    props.hiddenPartIds
   ]);
 
   useEffect(() => {

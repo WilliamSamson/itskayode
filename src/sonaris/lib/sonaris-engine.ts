@@ -379,7 +379,9 @@ export function scanRoom(
   noise: number,
   sensorHeight = 0.5,
   obstacles: ScanObstacle[] = [],
-  wallHeight = 3
+  wallHeight = 3,
+  fovDeg = 360,
+  fovStartDeg = 0
 ): ScanPoint[] {
   if (
     ![roomWidth, roomDepth, x, z, headingDeg, tiltDeg, rays, range, noise, sensorHeight].every(
@@ -412,9 +414,12 @@ export function scanRoom(
   const points: ScanPoint[] = [];
   const h = (headingDeg * Math.PI) / 180,
     t = (tiltDeg * Math.PI) / 180;
-  // Rotate the full 2D scan plane about the local lateral axis, then apply rover yaw.
+  // Rotate the scan plane about the local lateral axis, then apply rover yaw.
   for (let i = 0; i < rays; i++) {
-    const a = (i / rays) * Math.PI * 2;
+    const a =
+      fovDeg >= 360
+        ? (i / rays) * Math.PI * 2
+        : ((fovStartDeg + (rays > 1 ? (i / (rays - 1)) * fovDeg : 0)) * Math.PI) / 180;
     const localX = Math.cos(a) * Math.cos(t),
       dy = Math.cos(a) * Math.sin(t),
       localZ = Math.sin(a);

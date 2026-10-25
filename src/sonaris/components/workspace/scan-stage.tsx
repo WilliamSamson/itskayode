@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { assemblyParts } from "@/sonaris/lib/sonaris-assembly";
 import type { ScanPoint, ScanObstacle } from "@/sonaris/lib/sonaris-engine";
+import { createAssemblyModel } from "./assembly-models";
 
 export interface ProbedPoint {
   x: number;
@@ -15,7 +17,7 @@ export interface ProbedPoint {
 export interface RoverPose {
   x: number;
   z: number;
-  heading: number; // yaw in degrees
+  heading: number; // yaw in degrees (0° = +X, 90° = +Z, 180° = -X, 270° = -Z)
 }
 
 export interface ScanStageProps {
@@ -25,40 +27,33 @@ export interface ScanStageProps {
   sensorHeight?: number;
   roverPose?: RoverPose;
   onRoverMove?: (pose: RoverPose) => void;
-  unmappedGaps?: { center: [number, number]; spanM: number; wall: string }[];
+  waypoints?: [number, number][];
+  activeWaypointIndex?: number;
+  onAddWaypoint?: (point: [number, number]) => void;
+  interactMode?: "waypoint" | "direct";
   obstacles?: ScanObstacle[];
   navPath?: [number, number][];
   isNavigating?: boolean;
+  isHazardAhead?: boolean;
   wheelRPMs?: [number, number, number, number];
   roomWidth: number;
   roomDepth: number;
   roomHeight?: number;
-  showRoomBounds: boolean;
-  showLaserFan: boolean;
-  showSpinningBeam?: boolean;
-  pointSize: number;
-  colorMode: "elevation" | "laser" | "plane";
-  currentSweepStep: number;
-  isSweeping: boolean;
-  view?: "isometric" | "top" | "front";
-  heightFilter?: [number, number];
-  isolatedPlane?: number | "all";
-  raysPerPlane?: number;
-  onPointInspect?: (point: ProbedPoint | null) => void;
+  showRoomBounds?: boolean;
+  showLaserFan?: boolean;
+  pointSize?: number;
+  colorMode?: "elevation" | "laser" | "plane";
+  isSweeping?: boolean;
 }
 
-// 10 distinct calibrated laboratory colors for 10 sweep planes (-30° to +60°)
 const PLANE_PALETTE = [
   new THREE.Color("#E34242"),
   new THREE.Color("#E8702A"),
   new THREE.Color("#D49520"),
-  new THREE.Color("#9E9826"),
   new THREE.Color("#2E9354"),
-  new THREE.Color("#1DA69A"),
   new THREE.Color("#288BD5"),
   new THREE.Color("#6B5BD5"),
-  new THREE.Color("#A83FA8"),
-  new THREE.Color("#E53E7C")
+  new THREE.Color("#A83FA8")
 ];
 
 function disposeObject(object: THREE.Object3D) {
@@ -76,29 +71,25 @@ export default function ScanStage({
   points,
   latestPoints,
   tiltDeg,
-  sensorHeight = 0.50,
+  sensorHeight = 0.26,
   roverPose = { x: 0, z: 0, heading: 0 },
   onRoverMove,
-  unmappedGaps = [],
+  waypoints = [],
+  activeWaypointIndex = -1,
+  onAddWaypoint,
+  interactMode = "waypoint",
   obstacles = [],
   navPath = [],
   isNavigating = false,
-  wheelRPMs = [0, 0, 0, 0],
+  isHazardAhead = false,
   roomWidth,
   roomDepth,
   roomHeight = 3,
-  showRoomBounds,
-  showLaserFan,
-  showSpinningBeam = true,
-  pointSize,
-  colorMode,
-  currentSweepStep,
-  isSweeping,
-  view,
-  heightFilter = [0, 3],
-  isolatedPlane = "all",
-  raysPerPlane = 360,
-  onPointInspect
+  showRoomBounds = true,
+  showLaserFan = true,
+  pointSize = 2.5,
+  colorMode = "elevation",
+  isSweeping = false
 }: ScanStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<{
@@ -108,29 +99,38 @@ export default function ScanStage({
     controls: OrbitControls;
     pointsMesh: THREE.Points;
     latestMesh: THREE.Points;
+    ribbonsMesh: THREE.LineSegments;
     roomGroup: THREE.Group;
-    gapsGroup: THREE.Group;
     obstaclesGroup: THREE.Group;
     pathGroup: THREE.Group;
     roverGroup: THREE.Group;
-    wheels: THREE.Mesh[];
+    corridorMesh: THREE.Mesh;
     tiltHead: THREE.Group;
     laserFan: THREE.Group;
-    fanMesh: THREE.Mesh;
     laserBeam: THREE.Line;
-    probeMarker: THREE.Group;
     floorMesh: THREE.Mesh;
     render: () => void;
     wake: () => void;
   } | null>(null);
 
   const [webglError, setWebglError] = useState<string | null>(null);
-  const onPointInspectRef = useRef(onPointInspect);
-  onPointInspectRef.current = onPointInspect;
   const onRoverMoveRef = useRef(onRoverMove);
   onRoverMoveRef.current = onRoverMove;
+  const onAddWaypointRef = useRef(onAddWaypoint);
+  onAddWaypointRef.current = onAddWaypoint;
+  const interactModeRef = useRef(interactMode);
+  interactModeRef.current = interactMode;
+  const roverPoseRef = useRef(roverPose);
+  roverPoseRef.current = roverPose;
+  const isSweepingRef = useRef(isSweeping);
+  isSweepingRef.current = isSweeping;
+  const showLaserFanRef = useRef(showLaserFan);
+  showLaserFanRef.current = showLaserFan;
+  const isHazardAheadRef = useRef(isHazardAhead);
+  isHazardAheadRef.current = isHazardAhead;
+  const isNavigatingRef = useRef(isNavigating);
+  isNavigatingRef.current = isNavigating;
 
-  // Initialize Three.js context
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -144,49 +144,36 @@ export default function ScanStage({
     }
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
-    renderer.setClearColor(0x050507, 1);
+    renderer.setClearColor(0x050608, 1);
     renderer.domElement.style.touchAction = "none";
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     renderer.domElement.style.display = "block";
-    renderer.domElement.setAttribute("aria-label", "Interactive 3D Scan Point Cloud Viewport");
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x050507, 0.032);
-
     const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.05, 50);
-    camera.position.set(4.8, 3.8, 5.2);
+    camera.position.set(4.8, 4.2, 5.2);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.rotateSpeed = 0.85;
     controls.minDistance = 0.5;
     controls.maxDistance = 25;
-    controls.target.set(0, 0.8, 0);
+    controls.target.set(0, 0.6, 0);
 
-    // Subtle laboratory lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.95);
-    scene.add(ambient);
-
-    const keyLight = new THREE.DirectionalLight(0xfff5ea, 1.8);
+    // Subtle lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const keyLight = new THREE.DirectionalLight(0xfff5ea, 1.6);
     keyLight.position.set(5, 8, 4);
     scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight(0x7090b0, 0.8);
-    rimLight.position.set(-4, 3, -4);
-    scene.add(rimLight);
-
-    // Content groups
+    // Groups
     const roomGroup = new THREE.Group();
     scene.add(roomGroup);
 
     const obstaclesGroup = new THREE.Group();
     scene.add(obstaclesGroup);
-
-    const gapsGroup = new THREE.Group();
-    scene.add(gapsGroup);
 
     const pathGroup = new THREE.Group();
     scene.add(pathGroup);
@@ -194,136 +181,134 @@ export default function ScanStage({
     const roverGroup = new THREE.Group();
     scene.add(roverGroup);
 
-    // Floor Mesh for clicking & navigation
+    // Floor Mesh for clicking
     const floorGeo = new THREE.PlaneGeometry(roomWidth + 0.4, roomDepth + 0.4);
-    const floorMat = new THREE.MeshBasicMaterial({ color: 0x0a0b0e, side: THREE.DoubleSide });
+    const floorMat = new THREE.MeshBasicMaterial({ color: 0x07080b, side: THREE.DoubleSide });
     const floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.y = -0.001;
     scene.add(floorMesh);
 
-    // 1. Build Physical Rover & Tilting S2 Mount
-    const roverChassis = new THREE.Mesh(
-      new THREE.BoxGeometry(0.32, 0.06, 0.26),
-      new THREE.MeshStandardMaterial({ color: 0x1c1e24, roughness: 0.35, metalness: 0.8 })
-    );
-    roverChassis.position.y = 0.04;
-    roverGroup.add(roverChassis);
+    // 1. Rover Physical Geometry (authentic sculpted SONARIS assembly scaled 1 mm -> 0.001 m, pointing +X)
+    const scaledChassis = new THREE.Group();
+    scaledChassis.scale.setScalar(0.001);
+    const ROVER_STAGE_IDS = new Set([
+      "base",
+      "deck",
+      "shell",
+      "bumper",
+      "estop",
+      "tilt-frame",
+      "servo",
+      "wheel-front-left",
+      "wheel-front-right",
+      "wheel-rear-left",
+      "wheel-rear-right",
+      "motor-front-left",
+      "motor-front-right",
+      "motor-rear-left",
+      "motor-rear-right",
+      "bracket-front-left",
+      "bracket-front-right",
+      "bracket-rear-left",
+      "bracket-rear-right"
+    ]);
+    for (const part of assemblyParts) {
+      if (!ROVER_STAGE_IDS.has(part.id)) continue;
+      const model = createAssemblyModel(part);
+      model.position.set(part.home[0], part.home[1], part.home[2]);
+      scaledChassis.add(model);
+    }
+    roverGroup.add(scaledChassis);
 
-    // Forward Direction Arrow Indicator on Rover Chassis
-    const dirArrow = new THREE.Mesh(
-      new THREE.ConeGeometry(0.025, 0.06, 12),
-      new THREE.MeshBasicMaterial({ color: 0xffffff })
-    );
-    dirArrow.rotation.x = -Math.PI / 2;
-    dirArrow.position.set(0.12, 0.075, 0);
-    roverGroup.add(dirArrow);
-
-    // Mecanum wheel hubs (4 corners)
-    const wheels: THREE.Mesh[] = [];
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111317, roughness: 0.8, metalness: 0.5 });
-    const hubMat = new THREE.MeshStandardMaterial({ color: 0x991f1f, roughness: 0.3, metalness: 0.9 });
-    const wheelPositions = [
-      [0.14, 0.04, 0.14],
-      [-0.14, 0.04, 0.14],
-      [0.14, 0.04, -0.14],
-      [-0.14, 0.04, -0.14]
-    ];
-    wheelPositions.forEach(([wx, wy, wz]) => {
-      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 16), wheelMat);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(wx, wy, wz);
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.032, 12), hubMat);
-      wheel.add(hub);
-      roverGroup.add(wheel);
-      wheels.push(wheel);
-    });
-
-    // Tilt Riser Mast (420mm structural aluminum mast)
+    // Compact gimbal mount collar linking the rover deck to the LiDAR tilt head
+    const collarHeight = Math.max(0.015, sensorHeight - 0.23);
     const mast = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.016, 0.02, 0.44, 16),
+      new THREE.CylinderGeometry(0.014, 0.018, collarHeight, 16),
       new THREE.MeshStandardMaterial({ color: 0x2e3138, roughness: 0.4, metalness: 0.7 })
     );
-    mast.position.y = 0.26;
+    mast.position.set(0.08, 0.23 + collarHeight / 2, 0);
     roverGroup.add(mast);
 
-    // Servo U-Bracket
-    const bracket = new THREE.Mesh(
-      new THREE.BoxGeometry(0.07, 0.05, 0.06),
-      new THREE.MeshStandardMaterial({ color: 0x111319, roughness: 0.5, metalness: 0.6 })
-    );
-    bracket.position.y = 0.48;
-    roverGroup.add(bracket);
-
-    // Pivot Tilt Head (Rotates on X-axis according to tilt angle)
+    // Tilt Head at Fixed Sensor Elevation with authentic RPLIDAR S2 optical turret
     const tiltHead = new THREE.Group();
-    tiltHead.position.set(0, 0.50, 0); // 0.50m fixed sensor elevation
+    tiltHead.position.set(0.08, sensorHeight, 0);
     roverGroup.add(tiltHead);
 
-    // RPLIDAR S2 Scanner Head
-    const s2Cylinder = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.038, 0.038, 0.032, 24),
-      new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.2, metalness: 0.9 })
-    );
-    tiltHead.add(s2Cylinder);
+    const lidarDef = assemblyParts.find((p) => p.id === "lidar");
+    if (lidarDef) {
+      const s2Model = createAssemblyModel(lidarDef);
+      s2Model.scale.setScalar(0.001);
+      tiltHead.add(s2Model);
+    }
 
-    // Optical Window Dome
-    const dome = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.035, 0.012, 24),
-      new THREE.MeshStandardMaterial({ color: 0x991f1f, roughness: 0.1, metalness: 0.95, transparent: true, opacity: 0.85 })
-    );
-    dome.position.y = 0.02;
-    tiltHead.add(dome);
-
-    // Optical emitter eye aperture
-    const eye = new THREE.Mesh(
-      new THREE.BoxGeometry(0.012, 0.008, 0.01),
-      new THREE.MeshBasicMaterial({ color: 0xff3b3b })
-    );
-    eye.position.set(0.025, 0.02, 0);
-    tiltHead.add(eye);
-
-    // 2. Real-Time Tilted Laser Scan Fan & Spinning Beam
+    // 2. Forward 180° Laser Fan Sector (facing forward along +X)
     const laserFan = new THREE.Group();
     tiltHead.add(laserFan);
 
-    // Transparent laser plane disc
-    const fanGeo = new THREE.RingGeometry(0.06, 4.2, 48, 1, 0, Math.PI * 2);
+    const fanGeo = new THREE.RingGeometry(0.06, 3.8, 36, 1, -Math.PI / 2, Math.PI);
     const fanMat = new THREE.MeshBasicMaterial({
       color: 0x991f1f,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.18,
       depthWrite: false
     });
     const fanMesh = new THREE.Mesh(fanGeo, fanMat);
-    fanMesh.rotation.x = Math.PI / 2; // Flat in the scanner's local plane
+    fanMesh.rotation.x = Math.PI / 2;
     laserFan.add(fanMesh);
 
-    // Outer subtle boundary ring
+    // Forward arc border
     const edgeGeo = new THREE.BufferGeometry().setFromPoints(
-      Array.from({ length: 64 }, (_, i) => {
-        const theta = (i / 64) * Math.PI * 2;
-        return new THREE.Vector3(Math.cos(theta) * 4.2, 0, Math.sin(theta) * 4.2);
+      Array.from({ length: 33 }, (_, i) => {
+        const theta = -Math.PI / 2 + (i / 32) * Math.PI;
+        return new THREE.Vector3(Math.cos(theta) * 3.8, 0, Math.sin(theta) * 3.8);
       })
     );
-    const edgeLine = new THREE.LineLoop(
+    const edgeLine = new THREE.Line(
       edgeGeo,
-      new THREE.LineBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.4 })
+      new THREE.LineBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.55 })
     );
     laserFan.add(edgeLine);
 
-    // 10 Hz Rotating Laser Beam Ray
+    // Oscillating Laser Beam Ray
     const beamGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(4.2, 0, 0)
+      new THREE.Vector3(3.8, 0, 0)
     ]);
-    const beamMat = new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 });
-    const laserBeam = new THREE.Line(beamGeo, beamMat);
+    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 }));
     laserFan.add(laserBeam);
 
-    // 3. Point Cloud BufferGeometries
+    // 3. Dynamic Forward Perception Corridor (Active Ground Path Scanning)
+    const corridorGeo = new THREE.BufferGeometry();
+    const corridorVerts = new Float32Array([
+      0.15, 0.004, -0.20,
+      0.85, 0.004, -0.28,
+      0.85, 0.004, 0.28,
+
+      0.15, 0.004, -0.20,
+      0.85, 0.004, 0.28,
+      0.15, 0.004, 0.20
+    ]);
+    corridorGeo.setAttribute("position", new THREE.BufferAttribute(corridorVerts, 3));
+    const corridorMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const corridorMesh = new THREE.Mesh(corridorGeo, corridorMat);
+    corridorMesh.visible = false;
+    roverGroup.add(corridorMesh);
+
+    // 4. Point Cloud & Ribbons (Pre-allocated Buffers for Zero-Lag Streaming)
+    const MAX_POINTS = 60000;
     const pointsGeo = new THREE.BufferGeometry();
+    pointsGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
+    pointsGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
+    pointsGeo.setDrawRange(0, 0);
+
     const pointsMat = new THREE.PointsMaterial({
       size: pointSize,
       vertexColors: true,
@@ -334,8 +319,11 @@ export default function ScanStage({
     const pointsMesh = new THREE.Points(pointsGeo, pointsMat);
     scene.add(pointsMesh);
 
-    // Latest slice highlight points
+    const MAX_LATEST = 1000;
     const latestGeo = new THREE.BufferGeometry();
+    latestGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAX_LATEST * 3), 3));
+    latestGeo.setDrawRange(0, 0);
+
     const latestMat = new THREE.PointsMaterial({
       size: pointSize * 1.5,
       color: 0xffffff,
@@ -346,23 +334,21 @@ export default function ScanStage({
     const latestMesh = new THREE.Points(latestGeo, latestMat);
     scene.add(latestMesh);
 
-    // 4. Probed Point Crosshair Reticle Marker
-    const probeMarker = new THREE.Group();
-    const probeRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.04, 0.05, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
-    );
-    probeRing.rotation.x = -Math.PI / 2;
-    probeMarker.add(probeRing);
-    const probeDot = new THREE.Mesh(
-      new THREE.SphereGeometry(0.015, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff4d4d })
-    );
-    probeMarker.add(probeDot);
-    probeMarker.visible = false;
-    scene.add(probeMarker);
+    const MAX_RIBBONS = 2000;
+    const ribbonsGeo = new THREE.BufferGeometry();
+    ribbonsGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAX_RIBBONS * 6), 3));
+    ribbonsGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(MAX_RIBBONS * 6), 3));
+    ribbonsGeo.setDrawRange(0, 0);
 
-    // Gold-standard demand-driven rendering with smooth OrbitControls inertia damping
+    const ribbonsMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false
+    });
+    const ribbonsMesh = new THREE.LineSegments(ribbonsGeo, ribbonsMat);
+    scene.add(ribbonsMesh);
+
     let frameId = 0;
     let inAnimate = false;
     let disposed = false;
@@ -374,9 +360,20 @@ export default function ScanStage({
       }
       inAnimate = true;
       const unsettled = controls.update();
+
+      // Continuous laser beam oscillation during sweeps
+      if (isSweepingRef.current && showLaserFanRef.current) {
+        laserBeam.rotation.y = Math.sin(Date.now() * 0.008) * (Math.PI / 2);
+      }
+
       renderer.render(scene, camera);
       inAnimate = false;
-      frameId = unsettled ? requestAnimationFrame(animate) : 0;
+
+      if (unsettled || (isSweepingRef.current && showLaserFanRef.current)) {
+        frameId = requestAnimationFrame(animate);
+      } else {
+        frameId = 0;
+      }
     };
 
     const wake = () => {
@@ -387,24 +384,18 @@ export default function ScanStage({
 
     controls.addEventListener("change", wake);
 
-    // Interactive Point Raycaster Probe & Floor Click Navigation
+    // Pointer Interaction: Floor Click Navigation
     const raycaster = new THREE.Raycaster();
-    raycaster.params.Points = { threshold: 0.12 };
     const pointer = new THREE.Vector2();
     let downX = 0, downY = 0;
-    let isInteracting = false;
-    let hoverRaf = 0;
 
     const handlePointerDown = (e: PointerEvent) => {
       downX = e.clientX;
       downY = e.clientY;
-      isInteracting = true;
     };
 
     const handlePointerUp = (e: PointerEvent) => {
-      isInteracting = false;
-      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return; // ignore drags/orbits
-      if (!onRoverMoveRef.current) return;
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -414,63 +405,39 @@ export default function ScanStage({
       const floorHits = raycaster.intersectObject(floorMesh);
       if (floorHits.length > 0) {
         const pt = floorHits[0].point;
-        const clampedX = Math.max(-roomWidth / 2 + 0.35, Math.min(roomWidth / 2 - 0.35, pt.x));
-        const clampedZ = Math.max(-roomDepth / 2 + 0.35, Math.min(roomDepth / 2 - 0.35, pt.z));
-        onRoverMoveRef.current({
-          x: Number(clampedX.toFixed(2)),
-          z: Number(clampedZ.toFixed(2)),
-          heading: roverPose.heading
-        });
-        wake();
-      }
-    };
+        const clampedX = Number(Math.max(-roomWidth / 2 + 0.35, Math.min(roomWidth / 2 - 0.35, pt.x)).toFixed(2));
+        const clampedZ = Number(Math.max(-roomDepth / 2 + 0.35, Math.min(roomDepth / 2 - 0.35, pt.z)).toFixed(2));
 
-    // Throttled probe hover: NEVER raycasts during camera orbit or dragging
-    const handlePointerMove = (e: PointerEvent) => {
-      if (isInteracting || !onPointInspectRef.current) return;
+        if (interactModeRef.current === "waypoint" && onAddWaypointRef.current) {
+          onAddWaypointRef.current([clampedX, clampedZ]);
+          wake();
+          return;
+        }
 
-      if (!hoverRaf) {
-        hoverRaf = requestAnimationFrame(() => {
-          hoverRaf = 0;
-          if (disposed || isInteracting || !onPointInspectRef.current) return;
+        if (onRoverMoveRef.current) {
+          const current = roverPoseRef.current;
+          const targetHeading = Math.round(
+            (Math.atan2(clampedZ - current.z, clampedX - current.x) * 180) / Math.PI + 360
+          ) % 360;
 
-          const rect = renderer.domElement.getBoundingClientRect();
-          pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-          pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-          raycaster.setFromCamera(pointer, camera);
-          const intersects = raycaster.intersectObject(pointsMesh);
-
-          if (intersects.length > 0 && intersects[0].point) {
-            const pt = intersects[0].point;
-            const dist = Math.hypot(pt.x - roverPose.x, pt.y - 0.5, pt.z - roverPose.z);
-            probeMarker.position.copy(pt);
-            probeMarker.visible = true;
-            onPointInspectRef.current({ x: pt.x, y: pt.y, z: pt.z, distance: dist });
-            wake();
-          } else {
-            if (probeMarker.visible) {
-              probeMarker.visible = false;
-              onPointInspectRef.current(null);
-              wake();
-            }
-          }
-        });
+          onRoverMoveRef.current({
+            x: clampedX,
+            z: clampedZ,
+            heading: targetHeading
+          });
+          wake();
+        }
       }
     };
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
     renderer.domElement.addEventListener("pointerup", handlePointerUp);
-    renderer.domElement.addEventListener("pointermove", handlePointerMove);
 
-    // Handle responsive container resize
     const resizeObserver = new ResizeObserver(() => {
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      if (!w || !h) return;
-      renderer.setSize(w, h);
-      camera.aspect = w / h;
+      if (!container || !renderer) return;
+      camera.aspect = container.clientWidth / container.clientHeight;
       camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
       wake();
     });
     resizeObserver.observe(container);
@@ -482,17 +449,15 @@ export default function ScanStage({
       controls,
       pointsMesh,
       latestMesh,
+      ribbonsMesh,
       roomGroup,
-      gapsGroup,
       obstaclesGroup,
       pathGroup,
       roverGroup,
-      wheels,
+      corridorMesh,
       tiltHead,
       laserFan,
-      fanMesh,
       laserBeam,
-      probeMarker,
       floorMesh,
       render: () => renderer.render(scene, camera),
       wake
@@ -503,15 +468,11 @@ export default function ScanStage({
     return () => {
       disposed = true;
       if (frameId) cancelAnimationFrame(frameId);
-      if (hoverRaf) cancelAnimationFrame(hoverRaf);
       resizeObserver.disconnect();
       controls.removeEventListener("change", wake);
       controls.dispose();
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
-      renderer.domElement.removeEventListener("pointermove", handlePointerMove);
-
-      // Clean scene
       scene.traverse((obj) => disposeObject(obj));
       renderer.dispose();
       renderer.domElement.remove();
@@ -519,14 +480,13 @@ export default function ScanStage({
     };
   }, []);
 
-  // Update room bounds, grid, and obstacle geometries
+  // Update Room Geometry & Obstacles
   useEffect(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
 
-    const { roomGroup, gapsGroup, obstaclesGroup, floorMesh, wake } = rt;
+    const { roomGroup, obstaclesGroup, floorMesh, wake } = rt;
     roomGroup.clear();
-    gapsGroup.clear();
     obstaclesGroup.clear();
 
     const halfW = roomWidth / 2;
@@ -535,192 +495,168 @@ export default function ScanStage({
     floorMesh.geometry.dispose();
     floorMesh.geometry = new THREE.PlaneGeometry(roomWidth + 0.4, roomDepth + 0.4);
 
-    // High precision engineering grid
-    const grid = new THREE.GridHelper(Math.max(roomWidth, roomDepth), 20, 0x991f1f, 0x1f222a);
+    // Architectural Ground Grid
+    const maxDim = Math.max(roomWidth, roomDepth);
+    const grid = new THREE.GridHelper(maxDim, Math.round(maxDim * 2), 0x323746, 0x161822);
     grid.position.y = 0;
     roomGroup.add(grid);
 
     if (showRoomBounds) {
-      // Synthetic room boundary cage
-      const boxGeo = new THREE.BoxGeometry(roomWidth, roomHeight, roomDepth);
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(boxGeo),
-        new THREE.LineBasicMaterial({ color: 0x484c56, transparent: true, opacity: 0.6 })
-      );
-      edges.position.y = roomHeight / 2;
-      roomGroup.add(edges);
-
-      // Floor corner boundary ticks
-      const tickMat = new THREE.LineBasicMaterial({ color: 0x991f1f, transparent: true, opacity: 0.8 });
+      // Corner elevation tick columns
       const cornerTicks = [
         [halfW, -halfD],
         [halfW, halfD],
         [-halfW, -halfD],
         [-halfW, halfD]
       ];
+      const postMat = new THREE.LineBasicMaterial({ color: 0x5a6275, transparent: true, opacity: 0.7 });
       cornerTicks.forEach(([cx, cz]) => {
-        const tickGeo = new THREE.BufferGeometry().setFromPoints([
+        const postGeo = new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(cx, 0, cz),
-          new THREE.Vector3(cx, 0.25, cz)
+          new THREE.Vector3(cx, roomHeight, cz)
         ]);
-        roomGroup.add(new THREE.Line(tickGeo, tickMat));
+        roomGroup.add(new THREE.Line(postGeo, postMat));
       });
     }
 
-    // Render physical 3D obstacles
-    const obsMat = new THREE.MeshStandardMaterial({
-      color: 0x1e2026,
-      roughness: 0.75,
-      metalness: 0.35
-    });
-    const obsEdgeMat = new THREE.LineBasicMaterial({ color: 0x686c78, transparent: true, opacity: 0.85 });
+    // Physical Obstacles
+    const obsMat = new THREE.MeshStandardMaterial({ color: 0x181a24, roughness: 0.45, metalness: 0.8 });
+    const obsEdgeMat = new THREE.LineBasicMaterial({ color: 0x424859, transparent: true, opacity: 0.9 });
 
     for (const obs of obstacles) {
-      const obsGeo = new THREE.BoxGeometry(obs.width, obs.height, obs.depth);
-      const obsMesh = new THREE.Mesh(obsGeo, obsMat);
-      obsMesh.position.set(obs.x, obs.height / 2, obs.z);
-
-      const obsEdges = new THREE.LineSegments(new THREE.EdgesGeometry(obsGeo), obsEdgeMat);
-      obsMesh.add(obsEdges);
-
-      obstaclesGroup.add(obsMesh);
-    }
-
-    // Render unmapped shadow gaps along perimeter walls (dashed amber lines)
-    if (unmappedGaps.length > 0) {
-      const gapMat = new THREE.LineDashedMaterial({
-        color: 0xa87914,
-        dashSize: 0.15,
-        gapSize: 0.08,
-        linewidth: 2
-      });
-
-      for (const gap of unmappedGaps) {
-        const [gx, gz] = gap.center;
-        const halfSpan = gap.spanM / 2;
-        let p1: THREE.Vector3;
-        let p2: THREE.Vector3;
-
-        if (gap.wall === "north" || gap.wall === "south") {
-          p1 = new THREE.Vector3(gx - halfSpan, 0.02, gz);
-          p2 = new THREE.Vector3(gx + halfSpan, 0.02, gz);
-        } else {
-          p1 = new THREE.Vector3(gx, 0.02, gz - halfSpan);
-          p2 = new THREE.Vector3(gx, 0.02, gz + halfSpan);
-        }
-
-        const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-        const line = new THREE.Line(geo, gapMat);
-        line.computeLineDistances();
-        gapsGroup.add(line);
-      }
+      const geo = new THREE.BoxGeometry(obs.width, obs.height, obs.depth);
+      const mesh = new THREE.Mesh(geo, obsMat);
+      mesh.position.set(obs.x, obs.height / 2, obs.z);
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), obsEdgeMat));
+      obstaclesGroup.add(mesh);
     }
 
     wake();
-  }, [roomWidth, roomDepth, roomHeight, showRoomBounds, obstacles, unmappedGaps]);
+  }, [roomWidth, roomDepth, roomHeight, showRoomBounds, obstacles]);
 
-  // Render navigation trajectory path (warm amber breadcrumb line)
+  // Update Trajectory & Waypoint Paths
   useEffect(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
-
     const { pathGroup, wake } = rt;
     pathGroup.clear();
 
-    if (navPath.length > 1) {
-      const points3D = navPath.map(([x, z]) => new THREE.Vector3(x, 0.015, z));
-      const pathGeo = new THREE.BufferGeometry().setFromPoints(points3D);
-      const pathMat = new THREE.LineBasicMaterial({ color: 0xd49520, linewidth: 2 });
-      const pathLine = new THREE.Line(pathGeo, pathMat);
-      pathGroup.add(pathLine);
+    // 1. Render Plotted Route Waypoints & Stems
+    if (waypoints && waypoints.length > 0) {
+      const allWaypoints = [[roverPose.x, roverPose.z], ...waypoints].map(
+        ([x, z]) => new THREE.Vector3(x, 0.012, z)
+      );
+      const routeGeo = new THREE.BufferGeometry().setFromPoints(allWaypoints);
+      const routeLine = new THREE.Line(
+        routeGeo,
+        new THREE.LineBasicMaterial({
+          color: 0x991f1f,
+          transparent: true,
+          opacity: 0.6
+        })
+      );
+      pathGroup.add(routeLine);
 
-      // Waypoint node marker dots
-      const dotMat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
-      const dotGeo = new THREE.CircleGeometry(0.04, 16);
-      dotGeo.rotateX(-Math.PI / 2);
+      // Render pins and rings for each planned waypoint
+      waypoints.forEach(([wx, wz], idx) => {
+        const isActive = idx === activeWaypointIndex;
+        const color = isActive ? 0xff4d4d : 0xd49520;
 
-      for (const [x, z] of navPath) {
-        const dot = new THREE.Mesh(dotGeo, dotMat);
-        dot.position.set(x, 0.02, z);
-        pathGroup.add(dot);
-      }
-    }
+        const ringGeo = new THREE.RingGeometry(0.05, 0.13, 24);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: isActive ? 0.95 : 0.65
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.rotation.x = -Math.PI / 2;
+        ringMesh.position.set(wx, 0.006, wz);
+        pathGroup.add(ringMesh);
 
-    wake();
-  }, [navPath]);
+        // Center Pip
+        const dotGeo = new THREE.CircleGeometry(0.025, 16);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const dotMesh = new THREE.Mesh(dotGeo, dotMat);
+        dotMesh.rotation.x = -Math.PI / 2;
+        dotMesh.position.set(wx, 0.007, wz);
+        pathGroup.add(dotMesh);
 
-  // Update Rover Mecanum Pose & Spinning Wheels
-  useEffect(() => {
-    const rt = runtimeRef.current;
-    if (!rt) return;
-
-    const { tiltHead, laserFan, fanMesh, laserBeam, roverGroup, wheels, wake } = rt;
-
-    // Mecanum position on floor and yaw rotation
-    roverGroup.position.set(roverPose.x, 0, roverPose.z);
-    roverGroup.rotation.y = (-roverPose.heading * Math.PI) / 180;
-
-    // Spin individual mecanum wheels on axle proportional to inverse kinematics
-    if (isNavigating) {
-      wheels.forEach((w, i) => {
-        const rpm = wheelRPMs?.[i] ?? 0;
-        w.rotation.x += rpm !== 0 ? (rpm / 60) * 0.4 : 0.25;
+        // Vertical Pin Stem
+        const pinGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(wx, 0.007, wz),
+          new THREE.Vector3(wx, 0.22, wz)
+        ]);
+        const pinMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 });
+        pathGroup.add(new THREE.Line(pinGeo, pinMat));
       });
     }
 
-    // Fixed mast sensor elevation (0.50m)
-    tiltHead.position.set(0, 0.50, 0);
-
-    // Physical tilt rotation: RPLIDAR rotates around local X-axis
-    // Level-only interlock: In transit, head is held strictly level (0°) to feed 2D SLAM
-    const effectiveTilt = isNavigating ? 0 : tiltDeg;
-    const rad = (-effectiveTilt * Math.PI) / 180;
-    tiltHead.rotation.x = rad;
-
-    // Laser fan visibility & interlock color
-    laserFan.visible = showLaserFan;
-    if (showLaserFan) {
-      const fanMat = fanMesh.material as THREE.MeshBasicMaterial;
-      fanMat.opacity = isSweeping ? 0.26 : 0.16;
-      fanMat.color.setHex(isNavigating ? 0x1da67a : 0xa87914);
-      laserBeam.visible = showSpinningBeam;
-      if (showSpinningBeam && (isSweeping || isNavigating)) {
-        laserBeam.rotation.y += 0.45; // 10 Hz mirror rotation
-      }
+    // 2. Render Live Kinematics Execution Path
+    if (navPath.length > 1) {
+      const pts = navPath.map(([x, z]) => new THREE.Vector3(x, 0.015, z));
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 }));
+      pathGroup.add(line);
     }
-
     wake();
-  }, [roverPose.x, roverPose.z, roverPose.heading, tiltDeg, showLaserFan, showSpinningBeam, isSweeping, isNavigating]);
+  }, [navPath, waypoints, activeWaypointIndex]);
 
-  // Update Point Cloud buffer data and vertex coloring
+  // Update Rover Pose, Heading & Forward Dynamic Driving Corridor
   useEffect(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
 
-    const { pointsMesh, latestMesh, wake } = rt;
+    const { roverGroup, corridorMesh, tiltHead, laserFan, wake } = rt;
 
+    roverGroup.position.set(roverPose.x, 0, roverPose.z);
+    // In Three.js, positive Y rotation rotates +X toward -Z.
+    // Mathematical heading: 0° = +X, 90° = +Z, so rotation.y must be -headingRad.
+    roverGroup.rotation.y = -(roverPose.heading * Math.PI) / 180;
+
+    tiltHead.position.set(0.08, sensorHeight, 0);
+    // Tilt rotates around local Z-axis (pitching up/down along heading)
+    const effectiveTilt = isNavigating ? 0 : tiltDeg;
+    tiltHead.rotation.z = (effectiveTilt * Math.PI) / 180;
+
+    laserFan.visible = showLaserFan;
+
+    // Active forward driving terrain corridor
+    corridorMesh.visible = isNavigating;
+    if (isNavigating) {
+      const hazard = isHazardAheadRef.current;
+      (corridorMesh.material as THREE.MeshBasicMaterial).color.setHex(hazard ? 0xef4444 : 0x38bdf8);
+      (corridorMesh.material as THREE.MeshBasicMaterial).opacity = hazard ? 0.55 : 0.22;
+    }
+
+    wake();
+  }, [roverPose.x, roverPose.z, roverPose.heading, tiltDeg, sensorHeight, showLaserFan, isNavigating, isHazardAhead]);
+
+  // Update Point Cloud and Ribbons (Zero-Garbage Collection Buffer Streaming)
+  useEffect(() => {
+    const rt = runtimeRef.current;
+    if (!rt) return;
+
+    const { pointsMesh, latestMesh, ribbonsMesh, wake } = rt;
     (pointsMesh.material as THREE.PointsMaterial).size = pointSize;
     (latestMesh.material as THREE.PointsMaterial).size = pointSize * 1.5;
 
-    const [minY, maxY] = heightFilter;
-    const filteredPoints: ScanPoint[] = [];
+    const count = points.length;
+    let posAttr = pointsMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+    let colAttr = pointsMesh.geometry.getAttribute("color") as THREE.BufferAttribute;
 
-    const totalCount = points.length;
-    for (let i = 0; i < totalCount; i++) {
-      const p = points[i];
-      if (p.y < minY || p.y > maxY) continue;
-
-      if (isolatedPlane !== "all") {
-        const planeIdx = Math.floor(i / raysPerPlane);
-        if (planeIdx !== isolatedPlane) continue;
-      }
-
-      filteredPoints.push(p);
+    if (!posAttr || posAttr.count < count) {
+      const capacity = Math.max(60000, count + 10000);
+      const positions = new Float32Array(capacity * 3);
+      const colors = new Float32Array(capacity * 3);
+      pointsMesh.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      pointsMesh.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      posAttr = pointsMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+      colAttr = pointsMesh.geometry.getAttribute("color") as THREE.BufferAttribute;
     }
 
-    const count = filteredPoints.length;
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
+    const posArray = posAttr.array as Float32Array;
+    const colArray = colAttr.array as Float32Array;
 
     const tempColor = new THREE.Color();
     const deepWine = new THREE.Color("#8A1C1C");
@@ -729,11 +665,11 @@ export default function ScanStage({
     const laserRed = new THREE.Color("#E34242");
 
     for (let i = 0; i < count; i++) {
-      const p = filteredPoints[i];
+      const p = points[i];
       const i3 = i * 3;
-      positions[i3] = p.x;
-      positions[i3 + 1] = p.y;
-      positions[i3 + 2] = p.z;
+      posArray[i3] = p.x;
+      posArray[i3 + 1] = p.y;
+      posArray[i3 + 2] = p.z;
 
       if (colorMode === "elevation") {
         const t = Math.max(0, Math.min(1, p.y / Math.max(0.1, roomHeight)));
@@ -745,90 +681,75 @@ export default function ScanStage({
       } else if (colorMode === "laser") {
         tempColor.copy(laserRed);
       } else {
-        const planeIdx = Math.floor(i / raysPerPlane) % PLANE_PALETTE.length;
-        tempColor.copy(PLANE_PALETTE[planeIdx]);
+        tempColor.copy(PLANE_PALETTE[Math.floor(i / 180) % PLANE_PALETTE.length]);
       }
 
-      colors[i3] = tempColor.r;
-      colors[i3 + 1] = tempColor.g;
-      colors[i3 + 2] = tempColor.b;
+      colArray[i3] = tempColor.r;
+      colArray[i3 + 1] = tempColor.g;
+      colArray[i3 + 2] = tempColor.b;
     }
 
-    // High performance in-place buffer update eliminates GPU allocation stalls
-    let posAttr = pointsMesh.geometry.getAttribute("position") as THREE.BufferAttribute | undefined;
-    let colAttr = pointsMesh.geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
-
-    if (!posAttr || !colAttr || posAttr.count < count) {
-      const capacity = Math.max(12000, Math.ceil(count * 1.5));
-      const posArray = new Float32Array(capacity * 3);
-      const colArray = new Float32Array(capacity * 3);
-      pointsMesh.geometry.dispose();
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.BufferAttribute(posArray, 3));
-      geo.setAttribute("color", new THREE.BufferAttribute(colArray, 3));
-      pointsMesh.geometry = geo;
-      posAttr = geo.getAttribute("position") as THREE.BufferAttribute;
-      colAttr = geo.getAttribute("color") as THREE.BufferAttribute;
-    }
-
-    const posArray = posAttr!.array as Float32Array;
-    const colArray = colAttr!.array as Float32Array;
-    posArray.set(positions);
-    colArray.set(colors);
-    posAttr!.needsUpdate = true;
-    colAttr!.needsUpdate = true;
     pointsMesh.geometry.setDrawRange(0, count);
-    pointsMesh.geometry.computeBoundingSphere();
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
 
-    // Latest slice highlight buffer
-    const latestFiltered = latestPoints.filter((p) => p.y >= minY && p.y <= maxY);
-    const latestCount = latestFiltered.length;
-    let lPosAttr = latestMesh.geometry.getAttribute("position") as THREE.BufferAttribute | undefined;
-    if (!lPosAttr || lPosAttr.count < latestCount) {
-      const cap = Math.max(1200, latestCount * 2);
-      latestMesh.geometry.dispose();
-      const lGeo = new THREE.BufferGeometry();
-      lGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(cap * 3), 3));
-      latestMesh.geometry = lGeo;
-      lPosAttr = lGeo.getAttribute("position") as THREE.BufferAttribute;
+    // Ribbons: link points within recent active swaths (capped at 1000 segments)
+    let rPosAttr = ribbonsMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+    let rColAttr = ribbonsMesh.geometry.getAttribute("color") as THREE.BufferAttribute;
+    if (rPosAttr && rColAttr) {
+      const rPosArray = rPosAttr.array as Float32Array;
+      const rColArray = rColAttr.array as Float32Array;
+      let segCount = 0;
+      const startIndex = Math.max(0, count - 720);
+      for (let i = startIndex; i < count - 1 && segCount < 1000; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z);
+        if (dist < 0.40) {
+          const s6 = segCount * 6;
+          rPosArray[s6] = p1.x;
+          rPosArray[s6 + 1] = p1.y;
+          rPosArray[s6 + 2] = p1.z;
+          rPosArray[s6 + 3] = p2.x;
+          rPosArray[s6 + 4] = p2.y;
+          rPosArray[s6 + 5] = p2.z;
+
+          const i3 = i * 3;
+          rColArray[s6] = colArray[i3];
+          rColArray[s6 + 1] = colArray[i3 + 1];
+          rColArray[s6 + 2] = colArray[i3 + 2];
+          rColArray[s6 + 3] = colArray[i3 + 3];
+          rColArray[s6 + 4] = colArray[i3 + 4];
+          rColArray[s6 + 5] = colArray[i3 + 5];
+          segCount++;
+        }
+      }
+      ribbonsMesh.geometry.setDrawRange(0, segCount * 2);
+      rPosAttr.needsUpdate = true;
+      rColAttr.needsUpdate = true;
     }
-    const lPosArray = lPosAttr!.array as Float32Array;
-    for (let j = 0; j < latestCount; j++) {
-      const j3 = j * 3;
-      lPosArray[j3] = latestFiltered[j].x;
-      lPosArray[j3 + 1] = latestFiltered[j].y;
-      lPosArray[j3 + 2] = latestFiltered[j].z;
+
+    // Latest slice highlight
+    const lCount = latestPoints.length;
+    let lPosAttr = latestMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+    if (lPosAttr) {
+      const lPosArray = lPosAttr.array as Float32Array;
+      for (let j = 0; j < lCount && j < 1000; j++) {
+        const j3 = j * 3;
+        lPosArray[j3] = latestPoints[j].x;
+        lPosArray[j3 + 1] = latestPoints[j].y;
+        lPosArray[j3 + 2] = latestPoints[j].z;
+      }
+      latestMesh.geometry.setDrawRange(0, lCount);
+      lPosAttr.needsUpdate = true;
     }
-    lPosAttr!.needsUpdate = true;
-    latestMesh.geometry.setDrawRange(0, latestCount);
-    latestMesh.geometry.computeBoundingSphere();
 
     wake();
-  }, [points, latestPoints, pointSize, colorMode, roomHeight, heightFilter, isolatedPlane, raysPerPlane]);
-
-  // Handle Camera view presets
-  useEffect(() => {
-    const rt = runtimeRef.current;
-    if (!rt) return;
-
-    const { camera, controls, wake } = rt;
-    if (view === "isometric") {
-      camera.position.set(4.8, 3.8, 5.2);
-      controls.target.set(0, 0.8, 0);
-    } else if (view === "top") {
-      camera.position.set(0.001, 7.5, 0);
-      controls.target.set(0, 0, 0);
-    } else if (view === "front") {
-      camera.position.set(0, 1.4, 6.2);
-      controls.target.set(0, 0.8, 0);
-    }
-    controls.update();
-    wake();
-  }, [view]);
+  }, [points, latestPoints, pointSize, colorMode, roomHeight]);
 
   if (webglError) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[#050507] p-6 text-center font-mono text-[11px] text-[#A87914]">
+      <div className="flex h-full w-full items-center justify-center bg-[#050608] p-6 text-center font-mono text-[11px] text-[#A87914]">
         {webglError}
       </div>
     );
