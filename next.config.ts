@@ -5,7 +5,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
-  output: "export",
+  ...(process.env.NODE_ENV === "development"
+    ? { allowedDevOrigins: ["10.10.4.103"] }
+    : { output: "export" as const }),
   outputFileTracingRoot: path.resolve(__dirname),
   trailingSlash: true,
   images: {

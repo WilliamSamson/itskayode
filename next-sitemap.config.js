@@ -2,6 +2,7 @@
 module.exports = {
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "https://itskayode.web.app",
   generateRobotsTxt: true,
+  exclude: ["/p/*"],
   changefreq: "weekly",
   sitemapSize: 7000,
   robotsTxtOptions: {

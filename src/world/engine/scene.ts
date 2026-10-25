@@ -34,6 +34,13 @@ import { PerformanceProfile, type RenderProfile } from "./performance-profile";
 import { SpaceEnvironment } from "../space/space-environment";
 import { WORLD_SCALE } from "./world-scale";
 import { LightPool } from "./light-pool";
+import {
+  applyFogField,
+  fogFieldFor,
+  heightFogUniforms,
+  installHeightFog,
+  type FogField,
+} from "./height-fog";
 import { STUDIO_ISLAND_BOUND } from "../studio/island";
 import { buildStudioWorld, type WorldObjects, type StudioLightId } from "../studio/studio-world";
 import { resetRand } from "../studio/rand";
@@ -147,15 +154,6 @@ export class OrraScene {
   /** Cached live celestial state. */
   public celestialState: CelestialLightingState | null = null;
 
-  /**
-   * Inversion ceiling, in metres. The office roofline sits at ~4.3 m, so a
-   * 20 m ceiling pools fog around the buildings; the default overview camera
-   * (~34 m up) sits in the thinning band, and climbing higher breaks out into
-   * clear air with the island floating in its own cloud.
-   */
-  public static readonly FOG_INVERSION_TOP = 20;
-  /** Altitude band over which the inversion thins out rather than cutting off. */
-  public static readonly FOG_INVERSION_FALLOFF = 30;
   /** Sun placement distance from the look target; only its direction matters for light. */
   private static readonly SUN_DISTANCE = 90;
   /**
@@ -164,6 +162,20 @@ export class OrraScene {
    */
   private static readonly CLOUD_LIFT = STUDIO_ISLAND_BOUND * 0.72;
   private static readonly LIGHTNING_FOG = new THREE.Color(0xbdd5f0);
+  /**
+   * Fog in-scatter, calibrated 2026-10-04 so noon mist reads ~#c0c8d0 and the
+   * sun-ward glow saturates only within ~20° of the sun. Water droplets barely
+   * tint; dust absorbs blue. The night floor is the island's own light
+   * scattered back, so mist lifts toward grey instead of the void (§4.4).
+   */
+  private static readonly FOG_AMBIENT_GAIN = 1.4;
+  private static readonly FOG_SUN_GAIN = 0.16;
+  private static readonly FOG_NIGHT_FLOOR = new THREE.Color(0x262a33);
+  private static readonly FOG_ALBEDO_WATER = new THREE.Color(0.94, 0.96, 1.0);
+  private static readonly FOG_ALBEDO_DUST = new THREE.Color(0.85, 0.6, 0.36);
+  /** Seconds for the fog to settle on a new weather state; frame-rate independent. */
+  private static readonly FOG_FIELD_TAU = 0.2;
+  private static readonly FOG_COLOR_TAU = 0.33;
   /** Shadows re-render only when the sun or the view has moved this much. */
   private static readonly SHADOW_SUN_EPSILON = Math.cos((1.0 * Math.PI) / 180);
   private static readonly SHADOW_TARGET_EPSILON = 0.5;
@@ -184,39 +196,6 @@ export class OrraScene {
   /** Re-render mid-move once the target has drifted this far toward the map edge. */
   private static readonly SHADOW_EDGE_FRACTION = 0.4;
 
-  /**
-   * Fog range for an effective visibility and camera orbit radius.
-   *
-   * Crisp near field: nothing closer than 12 m is veiled, so the desks and
-   * glass in front of you keep their colour. Dense fog closes inside the far
-   * rim (the island is ~53 m in radius, so from the default 58 m orbit the far
-   * edge is ~110 m away); clear air reaches past the stars. Near eases in with
-   * smoothstep; far uses a power curve because extinction falls off faster
-   * than linearly (AGENTS.md 8.12.2).
-   *
-   * The exponent is measured, not inherited. At the 58 m default orbit:
-   *   pow 2.2 (the 5 km world's value): fog 180 / rain 769 / clear 3000 m
-   *   pow 3.2:                          fog  98 / rain 436 / clear 3000 m
-   * 2.2 never closes inside the ~111 m far rim, so fog could not dissolve it.
-   */
-  public static fogRange(visibility: number, radius: number): { near: number; far: number } {
-    const FOG_NEAR_DENSE = 12;
-    const FOG_NEAR_CLEAR = 600;
-    const FOG_FAR_DENSE = 75;
-    const FOG_FAR_CLEAR = 3000;
-    const vis = THREE.MathUtils.clamp(visibility, 0, 1);
-    const visEase = vis * vis * (3 - 2 * vis);
-    const visFar = Math.pow(vis, 3.2);
-    return {
-      near: THREE.MathUtils.lerp(FOG_NEAR_DENSE, FOG_NEAR_CLEAR, visEase),
-      far: THREE.MathUtils.lerp(
-        Math.max(FOG_FAR_DENSE, radius * 0.9),
-        Math.max(FOG_FAR_CLEAR, radius + 300),
-        visFar
-      ),
-    };
-  }
-
   public nav = new WorldNavigationController();
   public isReady = false;
   private raycaster = new THREE.Raycaster();
@@ -232,6 +211,9 @@ export class OrraScene {
 
   /** Reused so per-frame updates do not allocate. */
   private tmpFogColor = new THREE.Color();
+  private tmpFogSun = new THREE.Color();
+  private tmpFogRgb = { r: 0, g: 0, b: 0 };
+  private fogField: FogField = fogFieldFor(1, 0);
   private tmpSimPos = new THREE.Vector3();
   private tmpLookTarget = new THREE.Vector3();
   private tmpSunDir = new THREE.Vector3();
@@ -239,6 +221,8 @@ export class OrraScene {
   constructor(width: number, height: number) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000000);
+    installHeightFog();
+    // near/far are unused: height-fog.ts drives extinction through its own uniforms.
     this.scene.fog = new THREE.Fog(0x020106, 600, 3000);
 
     const aspect = width / height;
@@ -996,73 +980,48 @@ export class OrraScene {
         this.updateRenderProfile(this.frameMsEma, now);
       }
 
-      // 7. Atmospheric perspective. Visibility must map monotonically onto the
-      // fog range (AGENTS.md 8.12.2); fog pools under an inversion ceiling and
-      // clears as the camera climbs above it (8.12.3).
+      // 7. Atmospheric perspective (engine/height-fog.ts). Extinction follows
+      // the weather's visibility; in-scatter comes from the same sky and sun
+      // that light the island, so mist brightens by day, dims at night and
+      // glows toward the sun.
       if (this.scene.fog instanceof THREE.Fog) {
-        const rawVis = THREE.MathUtils.clamp(weatherState.visibility, 0, 1);
-        const isFogOrSand =
-          this.weatherManager.activePreset === "fog" ||
-          this.weatherManager.activePreset === "sandstorm" ||
-          (weatherState.fogDensity ?? 0) > 0.6;
-        const aboveLayer = THREE.MathUtils.clamp(
-          (this.camera.position.y - OrraScene.FOG_INVERSION_TOP) / OrraScene.FOG_INVERSION_FALLOFF,
-          0,
-          1
-        );
-        // In fog and sandstorm presets, atmospheric density envelops the island even when zooming out;
-        // breakout only applies to localized inversion mist in fair weather.
-        const breakout = isFogOrSand ? 0 : aboveLayer * aboveLayer * (3 - 2 * aboveLayer);
-
         // Two incommensurate slow terms keep the air drifting without a visible loop.
         const breath = 1 + Math.sin(elapsed * 0.061) * 0.07 + Math.sin(elapsed * 0.1373 + 1.7) * 0.045;
-        const vis = THREE.MathUtils.clamp(THREE.MathUtils.lerp(rawVis / breath, 1.0, breakout * 0.88), 0, 1);
+        const vis = THREE.MathUtils.clamp(weatherState.visibility / breath, 0, 1);
+        const target = fogFieldFor(vis, weatherState.fogDensity ?? 0);
+        const kField = 1 - Math.exp(-dt / OrraScene.FOG_FIELD_TAU);
+        const field = this.fogField;
+        field.extinction += (target.extinction - field.extinction) * kField;
+        field.scaleHeight += (target.scaleHeight - field.scaleHeight) * kField;
+        field.clearDistance += (target.clearDistance - field.clearDistance) * kField;
+        applyFogField(field);
 
-        const target = OrraScene.fogRange(vis, zoomRadius);
-        this.scene.fog.near = THREE.MathUtils.lerp(this.scene.fog.near, target.near, 0.08);
-        this.scene.fog.far = THREE.MathUtils.lerp(this.scene.fog.far, target.far, 0.08);
+        const albedo =
+          weatherState.precipitationType === "sand" ? OrraScene.FOG_ALBEDO_DUST : OrraScene.FOG_ALBEDO_WATER;
+        const ambient = this.tmpFogColor
+          .copy(celestialState.ambientColor)
+          .multiplyScalar(celestialState.ambientIntensity * OrraScene.FOG_AMBIENT_GAIN)
+          .add(OrraScene.FOG_NIGHT_FLOOR);
+        // Lightning is light, so it scatters like any other.
+        if (lightning > 0.1) ambient.lerp(OrraScene.LIGHTNING_FOG, Math.min(1.0, lightning * 0.85));
+        ambient.multiply(albedo);
+        this.scene.fog.color.lerp(ambient, 1 - Math.exp(-dt / OrraScene.FOG_COLOR_TAU));
 
-        // Colour follows the weather state, never the rain engine's internal
-        // phase. Fog is tested first: the fog preset is also heavily clouded.
-        const targetFogCol = this.tmpFogColor;
-        const isSand =
-          weatherState.precipitationType === "sand" || this.weatherManager.activePreset === "sandstorm";
-        const isSnow =
-          weatherState.precipitationType === "snow" ||
-          this.weatherManager.activePreset === "snow" ||
-          this.weatherManager.activePreset === "light_snow";
-        const isFrost = this.weatherManager.activePreset === "frost";
-        const isFoggy =
-          (weatherState.fogDensity ?? 0) > 0.5 || (vis < 0.45 && weatherState.precipitation < 0.3);
-        const isStorm =
-          weatherState.precipitation > 0.4 || this.weatherManager.activePreset === "thunderstorms";
-        const isOvercast = weatherState.cloudCoverage > 0.6;
-
-        if (this.worldTheme === "light") {
-          if (isSand) targetFogCol.set(0x9a7246);
-          else if (isSnow) targetFogCol.set(0xdde8f5);
-          else if (isFrost) targetFogCol.set(0xc8def8);
-          else if (isFoggy) targetFogCol.set(0xc8d6e4);
-          else if (isStorm) targetFogCol.set(0x5c6a7e);
-          else if (isOvercast) targetFogCol.set(0x8294ab);
-          else targetFogCol.set(0x000000);
-        } else {
-          // Fog scatters light, so night mist lifts toward grey rather than the void.
-          if (isSand) targetFogCol.set(0x362412);
-          else if (isSnow) targetFogCol.set(0x1c2436);
-          else if (isFrost) targetFogCol.set(0x12182c);
-          else if (isFoggy) targetFogCol.set(0x6b7488);
-          else if (isStorm) targetFogCol.set(0x121822);
-          else if (isOvercast) targetFogCol.set(0x282635);
-          else targetFogCol.set(0x020106);
-        }
-
-        // Lightning flash spikes fog illumination
-        if (lightning > 0.1) {
-          targetFogCol.lerp(OrraScene.LIGHTNING_FOG, Math.min(1.0, lightning * 0.85));
-        }
-
-        this.scene.fog.color.lerp(targetFogCol, 0.05);
+        const sun = this.tmpFogSun
+          .copy(celestialState.sunColor)
+          .multiply(albedo)
+          .multiplyScalar(celestialState.sunIntensity * OrraScene.FOG_SUN_GAIN)
+          .getRGB(this.tmpFogRgb, THREE.LinearSRGBColorSpace);
+        const sunUniform = heightFogUniforms.fogSunColor.value;
+        sunUniform.x = sun.r;
+        sunUniform.y = sun.g;
+        sunUniform.z = sun.b;
+        const dir = celestialState.sunDirection;
+        const len = dir.length() || 1;
+        const dirUniform = heightFogUniforms.fogSunDir.value;
+        dirUniform.x = dir.x / len;
+        dirUniform.y = dir.y / len;
+        dirUniform.z = dir.z / len;
       }
 
       if (this.renderer) {

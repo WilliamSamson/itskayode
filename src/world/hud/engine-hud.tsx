@@ -23,8 +23,6 @@ import {
   Info,
   Compass,
   Building2,
-  Play,
-  Pause,
   ZoomIn,
   Satellite,
   BookOpen,
@@ -120,14 +118,14 @@ export function EngineHud({
   transitionProgress: _transitionProgress,
   isClimateAuto = true,
   onToggleClimateAuto,
-  rainTelemetry,
+  rainTelemetry: _rainTelemetry,
   worldTime,
-  onTogglePauseTime,
-  onCycleTimeScale,
-  onSkipDays,
-  onSyncToLiveTime,
-  onScrubWorldTime,
-  timeScale = 1,
+  onTogglePauseTime: _onTogglePauseTime,
+  onCycleTimeScale: _onCycleTimeScale,
+  onSkipDays: _onSkipDays,
+  onSyncToLiveTime: _onSyncToLiveTime,
+  onScrubWorldTime: _onScrubWorldTime,
+  timeScale: _timeScale = 1,
   onSelectRainPhase: _onSelectRainPhase,
   onSetRainProgress: _onSetRainProgress,
   onSelectWeatherPreset,
@@ -167,7 +165,7 @@ export function EngineHud({
   // The weather preset is the single authority on precipitation (see scene.ts).
   // The HUD must read from that same authority, or it will narrate a storm the
   // world is not rendering.
-  const isRaining = (weatherState?.precipitation ?? 0) > 0.05;
+  const _isRaining = (weatherState?.precipitation ?? 0) > 0.05;
 
   // Keyboard shortcuts:
   // V or v : toggles Perspectives HUD drawer
@@ -311,10 +309,8 @@ export function EngineHud({
         >
           {/* Header */}
           <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
-            <div className="flex items-center gap-2">
-              <span className="font-sans font-semibold text-[13px] text-white">Perspectives</span>
-            </div>
-            <span className="text-[11px] font-sans font-semibold text-white">
+            <span className="font-sans font-semibold text-[13px] text-white">Places to visit</span>
+            <span className="text-[11px] font-sans text-neutral-400">
               {PERSPECTIVE_CONFIGS[activePerspective].label}
             </span>
           </div>
@@ -324,62 +320,54 @@ export function EngineHud({
             {[
               {
                 id: "oblique" as const,
-                label: "3/4 Oblique",
-                desc: "The whole studio island floating in space",
-                shortcut: "O",
+                label: "Island Overview",
+                desc: "High vantage overlooking the whole estate",
                 icon: Compass,
               },
               {
                 id: "office" as const,
                 label: "The West Pavilion",
-                desc: "Panoramic minimalist lounge, marble hearth & space vista",
-                shortcut: "E",
+                desc: "Living lounge with fireplace and horizon vista",
                 icon: Building2,
                 lightCircuit: "command-desk" as const,
               },
               {
                 id: "boardroom" as const,
-                label: "The Study",
-                desc: "Private library, research desk & garden terrace",
-                shortcut: "F",
+                label: "The Study & Library",
+                desc: "Quiet reading desk overlooking the lawn",
                 icon: BookOpen,
                 lightCircuit: "boardroom" as const,
               },
               {
                 id: "solarium" as const,
                 label: "Southern Solarium",
-                desc: "Indoor flora terrace, water basin & cosmic space panorama",
-                shortcut: "G",
+                desc: "Indoor botanical garden with reflecting pool",
                 icon: Flower2,
                 lightCircuit: "talent-desk" as const,
               },
               {
                 id: "tech-lab" as const,
-                label: "Advanced Tech Lab",
-                desc: "Cryogenic quantum power core & advanced engineering",
-                shortcut: "T",
+                label: "Creative Studio",
+                desc: "Design workshop and engineering core",
                 icon: Cpu,
                 lightCircuit: "advanced-tech-lab" as const,
               },
               {
                 id: "power-grid" as const,
-                label: "100 kW Power Grid",
-                desc: "Substation, turbogenerators, induction coils & electric arc",
-                shortcut: "K",
+                label: "Energy Garden",
+                desc: "Solar generators and clean power station",
                 icon: Zap,
               },
               {
                 id: "satellite" as const,
-                label: "Orbital Fleet",
-                desc: "Relay probes and deep-space observatory in orbit",
-                shortcut: "S",
+                label: "Orbital Satellites",
+                desc: "Deep-space view looking back at the island",
                 icon: Satellite,
               },
               {
                 id: "overhead" as const,
-                label: "Overhead Map",
-                desc: "Top-down floor plan of the island",
-                shortcut: "H",
+                label: "Top-down Map",
+                desc: "Overhead blueprint of the estate",
                 icon: ZoomIn,
               },
             ].map((view) => {
@@ -393,8 +381,8 @@ export function EngineHud({
                   key={view.id}
                   className={`flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg transition-all ${
                     isSelected
-                      ? "bg-neutral-900 text-white border border-neutral-600"
-                      : "text-neutral-300 hover:text-white hover:bg-neutral-900 border border-transparent"
+                      ? "bg-neutral-900 text-white border border-neutral-700"
+                      : "text-neutral-300 hover:text-white hover:bg-neutral-900/60 border border-transparent"
                   }`}
                 >
                   <button
@@ -415,8 +403,8 @@ export function EngineHud({
                     </div>
                   </button>
 
-                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                    {hasLight && view.lightCircuit && (
+                  {hasLight && view.lightCircuit && (
+                    <div className="flex items-center shrink-0 ml-2">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -437,11 +425,8 @@ export function EngineHud({
                           <LightbulbOff className="w-3.5 h-3.5" />
                         )}
                       </button>
-                    )}
-                    <kbd className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-neutral-900 text-neutral-400 border border-neutral-800">
-                      {view.shortcut}
-                    </kbd>
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -463,7 +448,7 @@ export function EngineHud({
             <div className="flex items-center gap-2">
               <span className="font-sans font-semibold text-[13px] text-white">Atmosphere</span>
               <span className="text-[11px] font-sans text-neutral-500">
-                {isClimateAuto ? "Season-Driven" : "Manual Override"}
+                {isClimateAuto ? "Seasonal" : "Custom mood"}
               </span>
             </div>
             {onToggleClimateAuto && (
@@ -477,11 +462,11 @@ export function EngineHud({
                 }`}
                 title={
                   isClimateAuto
-                    ? "Auto seasonal climate is active. Click to switch to manual override."
-                    : "Manual override active. Click to restore automatic seasonal climate."
+                    ? "World follows the living season. Click to set custom weather."
+                    : "Custom weather active. Click to resume following the living season."
                 }
               >
-                {isClimateAuto ? "Auto Climate" : "Manual Mode"}
+                {isClimateAuto ? "Following seasons" : "Custom weather"}
               </button>
             )}
           </div>
@@ -507,195 +492,27 @@ export function EngineHud({
             })}
           </div>
 
-          {/* Interactive Time-of-Day Arc & Slider */}
-          {worldTime && (
-            <div className="pt-2 border-t border-neutral-800 space-y-2">
-              <div className="flex items-baseline justify-between">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-sans font-semibold text-[12px] text-white">Time of Day</span>
-                  <span className="text-[11px] font-sans capitalize text-white font-semibold">
-                    {worldTime.diurnalPhase} · {formatWorldClockTime12h(worldTime.dayFraction).time} {formatWorldClockTime12h(worldTime.dayFraction).period}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {worldTime.isLiveSync ? (
-                    <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-neutral-900 text-neutral-300 border border-neutral-800">
-                      Live Sync
-                    </span>
-                  ) : (
-                    onSyncToLiveTime && (
-                      <button
-                        type="button"
-                        onClick={onSyncToLiveTime}
-                        className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 border border-neutral-700 transition-colors"
-                        title="Sync time back to visitor live local clock"
-                      >
-                        Sync Live
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-
-              {/* Time of Day Slider */}
-              {onScrubWorldTime && (
-                <input
-                  type="range"
-                  min="0"
-                  max="0.999"
-                  step="0.005"
-                  value={worldTime.dayFraction}
-                  onChange={(e) => onScrubWorldTime(parseFloat(e.target.value))}
-                  aria-label="Time of Day Slider"
-                  className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
-                />
-              )}
-
-              {/* Diurnal Phase Quick-Select Buttons */}
-              {onScrubWorldTime && (
-                <div className="flex items-center justify-between text-[10.5px] font-sans text-neutral-400 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onScrubWorldTime(0.26)}
-                    className={`hover:text-white transition-colors ${
-                      worldTime.diurnalPhase === "dawn" ? "text-white font-semibold" : ""
-                    }`}
-                  >
-                    Dawn
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onScrubWorldTime(0.50)}
-                    className={`hover:text-white transition-colors ${
-                      worldTime.diurnalPhase === "noon" ? "text-white font-semibold" : ""
-                    }`}
-                  >
-                    Noon
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onScrubWorldTime(0.74)}
-                    className={`hover:text-white transition-colors ${
-                      worldTime.diurnalPhase === "dusk" ? "text-white font-semibold" : ""
-                    }`}
-                  >
-                    Dusk
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onScrubWorldTime(0.92)}
-                    className={`hover:text-white transition-colors ${
-                      worldTime.diurnalPhase === "night" ? "text-white font-semibold" : ""
-                    }`}
-                  >
-                    Night
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* World Calendar & Time Controls */}
-          {worldTime && (
-            <div className="flex items-baseline justify-between gap-3 pt-2 pb-0.5 border-t border-neutral-800">
-              <div className="flex items-baseline gap-2 min-w-0">
-                <span className="font-sans text-[13px] text-white capitalize font-medium">
-                  {worldTime.season}
-                </span>
-                <span className="font-mono tabular-nums text-[11px] text-neutral-400">
-                  day {worldTime.day} · year {worldTime.year}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {onTogglePauseTime && (
-                  <button
-                    type="button"
-                    onClick={onTogglePauseTime}
-                    title={worldTime.paused ? "Resume simulation" : "Pause simulation"}
-                    aria-label={worldTime.paused ? "Resume simulation" : "Pause simulation"}
-                    className="p-1 rounded text-neutral-300 hover:text-white hover:bg-neutral-900 transition-colors"
-                  >
-                    {worldTime.paused ? (
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                    ) : (
-                      <Pause className="w-3.5 h-3.5 fill-current" />
-                    )}
-                  </button>
-                )}
-                {onSkipDays && (
-                  <button
-                    type="button"
-                    onClick={() => onSkipDays(8)}
-                    title="Skip forward one season"
-                    className="font-sans text-[11px] text-neutral-400 hover:text-white transition-colors"
-                  >
-                    +1 season
-                  </button>
-                )}
-                {onCycleTimeScale && (
-                  <button
-                    type="button"
-                    onClick={onCycleTimeScale}
-                    title="Change how fast world time runs"
-                    className="font-mono tabular-nums text-[11px] text-white hover:text-neutral-300 transition-colors"
-                  >
-                    {timeScale}×
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Key atmospheric readings (4 glance metrics) */}
+          {/* Natural atmospheric description */}
           {weatherState && (
-            <div className="grid grid-cols-4 gap-x-2 text-[11px] pt-1.5 border-t border-neutral-800">
-              <div>
-                <span className="text-neutral-500 text-[10px] block font-sans">Visibility</span>
-                <span className="font-mono tabular-nums text-white">
-                  {Math.round(weatherState.visibility * 100)}%
+            <div className="pt-2 border-t border-neutral-800 space-y-2 text-[11px]">
+              <p className="font-sans text-neutral-300 leading-relaxed">
+                {weatherPreset === "clear"
+                  ? "Crisp, sunlit sky with a gentle breeze across the plateau."
+                  : weatherPreset === "rain" || weatherPreset === "passing_showers"
+                    ? "Summer rain shower falling over the lawn and stone paths."
+                    : weatherPreset === "thunderstorms"
+                      ? "Dynamic thunderstorm with crepuscular lightning."
+                      : weatherPreset === "fog"
+                        ? "Soft valley mist drifting across the rocks and architecture."
+                        : weatherPreset === "snow" || weatherPreset === "light_snow" || weatherPreset === "frost"
+                          ? "Crisp winter cold with gentle snowfall."
+                          : "Warm atmospheric winds moving across the island."}
+              </p>
+              <div className="flex items-center justify-between text-neutral-400 pt-1 border-t border-neutral-900">
+                <span>Conditions</span>
+                <span className="text-neutral-200 capitalize font-medium">
+                  {weatherPreset.replace(/_/g, " ")} · {weatherState.temperature !== undefined ? `${Math.round(weatherState.temperature)}°C` : "20°C"}
                 </span>
-              </div>
-              <div>
-                <span className="text-neutral-500 text-[10px] block font-sans">Wind</span>
-                <span className="font-mono tabular-nums text-white">
-                  {Math.round(weatherState.wind * 24)} m/s
-                </span>
-              </div>
-              <div>
-                <span className="text-neutral-500 text-[10px] block font-sans">
-                  {weatherPreset === "light_snow" ? "Snow" : weatherPreset === "sandstorm" ? "Sand" : "Precip"}
-                </span>
-                <span className="font-mono tabular-nums text-white">
-                  {Math.round(weatherState.precipitation * 100)}%
-                </span>
-              </div>
-              <div>
-                <span className="text-neutral-500 text-[10px] block font-sans">Temp</span>
-                <span className="font-mono tabular-nums text-white">
-                  {weatherState.temperature !== undefined ? `${Math.round(weatherState.temperature)}°C` : "20°C"}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Rain lifecycle is shown only while the preset actually permits rain.
-              Surfacing the 9-phase cycle during clear weather advertised a storm
-              that was not happening and broke the sense that the sky is one thing. */}
-          {rainTelemetry && isRaining && (
-            <div className="space-y-1.5 pt-2 border-t border-neutral-800">
-              <div className="flex items-baseline justify-between text-[11px]">
-                <span className="font-sans text-neutral-300">
-                  {rainTelemetry.phase.replace(/_/g, " ")}
-                </span>
-                <span className="font-sans text-neutral-500 text-[10px]">
-                  {Math.round(rainTelemetry.cameraLocalRain * 100)}% overhead
-                </span>
-              </div>
-              <div className="h-1 w-full bg-neutral-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-white transition-all duration-150"
-                  style={{ width: `${Math.round(rainTelemetry.phaseProgress * 100)}%` }}
-                />
               </div>
             </div>
           )}
@@ -703,23 +520,23 @@ export function EngineHud({
       )}
 
       {/* ============================================================ */}
-      {/* 2. ENGINE TELEMETRY DRAWER (SOLID OLED BLACK, ZERO CARDS)     */}
+      {/* 2. ISLAND OVERVIEW DRAWER (HUMAN-FIRST, OPTIONAL DEV SPECS)  */}
       {/* ============================================================ */}
       {activeDrawer === "engine" && (
         <div
           role="region"
-          aria-label="ORRA Engine Telemetry"
+          aria-label="Island Overview"
           className="w-[calc(100vw-2rem)] sm:w-[350px] md:w-[360px] mb-2 sm:mb-2.5 rounded-xl border border-neutral-800 bg-black p-3 sm:p-3.5 text-white shadow-2xl space-y-2.5"
         >
           {/* Header */}
           <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
             <div className="flex items-center gap-2">
-              <span className="font-sans font-semibold text-[13px] text-white">Engine telemetry</span>
-              <span className="text-[11px] font-mono tabular-nums text-white font-semibold">
+              <span className="font-sans font-semibold text-[13px] text-white">Island overview</span>
+              <span className="text-[11px] font-mono tabular-nums text-emerald-400 font-semibold">
                 {stats?.fps ?? 60} fps
               </span>
-              <span className="text-[11px] font-mono tabular-nums text-neutral-500">
-                {stats?.frameTimeMs ?? 16.6} ms
+              <span className="text-[11px] font-sans text-neutral-500">
+                Smooth
               </span>
             </div>
 
@@ -732,69 +549,49 @@ export function EngineHud({
             </button>
           </div>
 
-          {/* Position on one line */}
-          <div className="flex items-baseline justify-between text-[11px] gap-3">
-            {stats ? (
-              <span className="font-mono tabular-nums text-neutral-200 min-w-0 truncate">
-                <span className="font-sans text-neutral-500 capitalize">{currentRange}</span>
-                <span className="text-neutral-600"> · </span>
-                {Math.round(stats.cameraPosition.x)}, {Math.round(stats.cameraPosition.z)}
-                <span className="text-neutral-600"> · </span>
-                <span className="text-white font-semibold">{Math.round(stats.cameraPosition.y)}m</span>
+          {/* Living Island Details (Human-First) */}
+          <div className="space-y-1.5 text-[11px] text-neutral-300">
+            <div className="flex items-baseline justify-between">
+              <span className="font-sans text-neutral-500">Viewpoint</span>
+              <span className="font-sans text-neutral-200 capitalize">
+                {currentRange} view {stats ? `· ${Math.round(stats.cameraPosition.y)}m altitude` : ""}
               </span>
-            ) : (
-              <span className="font-sans text-neutral-500 capitalize">{currentRange}</span>
-            )}
-          </div>
-
-          {/* Diagnostics */}
-          <div className="space-y-1 pt-2 border-t border-neutral-800 text-[11px] text-neutral-400">
-            {stats && (
-              <div className="flex items-baseline justify-between">
-                <span className="font-sans text-neutral-500">Draw calls · triangles</span>
-                <span className="font-mono tabular-nums text-neutral-200">
-                  {stats.drawCalls.toLocaleString()} · {stats.triangles.toLocaleString()}
-                </span>
-              </div>
-            )}
-            {stats && (
-              <div className="flex items-baseline justify-between">
-                <span className="font-sans text-neutral-500">GPU buffers</span>
-                <span className="font-mono tabular-nums text-neutral-200">
-                  {stats.geometries} geometries · {stats.textures} textures
-                </span>
-              </div>
-            )}
-            {stats && (
-              <div className="flex items-baseline justify-between">
-                <span className="font-sans text-neutral-500">Island flora & reach</span>
-                <span className="font-mono tabular-nums text-neutral-200">
-                  {stats.grassClumps.toLocaleString()} grass clumps · {stats.islandReach}m
-                </span>
-              </div>
-            )}
+            </div>
             {worldTime && (
               <div className="flex items-baseline justify-between">
-                <span className="font-sans text-neutral-500">World ephemeris</span>
-                <span className="font-mono tabular-nums text-neutral-200">
-                  year {worldTime.year} (day {worldTime.day}) · solar elev {Math.round(worldTime.sunElevation * 90)}°
+                <span className="font-sans text-neutral-500">Season & time</span>
+                <span className="font-sans text-neutral-200 capitalize">
+                  {worldTime.season} · {formatWorldClockTime12h(worldTime.dayFraction).time} {formatWorldClockTime12h(worldTime.dayFraction).period}
                 </span>
               </div>
             )}
             {weatherState && (
               <div className="flex items-baseline justify-between">
-                <span className="font-sans text-neutral-500">Atmosphere vector</span>
+                <span className="font-sans text-neutral-500">Atmosphere</span>
+                <span className="font-sans text-neutral-200 capitalize">
+                  {weatherPreset.replace(/_/g, " ")} sky · {Math.round(weatherState.cloudCoverage * 100)}% cloud
+                </span>
+              </div>
+            )}
+            {stats && (
+              <div className="flex items-baseline justify-between">
+                <span className="font-sans text-neutral-500">Living lawn</span>
                 <span className="font-mono tabular-nums text-neutral-200">
-                  {Math.round(weatherState.cloudCoverage * 100)}% cloud · {Math.round(weatherState.humidity * 100)}% hum · {Math.round(weatherState.surfaceWetness * 100)}% wet
+                  {stats.grassClumps.toLocaleString()} grass clumps · {stats.islandReach}m span
                 </span>
               </div>
             )}
             <div className="flex items-baseline justify-between">
-              <span className="font-sans text-neutral-500">Orbital constellation</span>
-              <span className="font-mono tabular-nums text-neutral-200">
-                4 craft · active telemetry uplink
+              <span className="font-sans text-neutral-500">Orbital fleet</span>
+              <span className="font-sans text-neutral-200">
+                4 research satellites in deep space
               </span>
             </div>
+          </div>
+
+          {/* Clean footnote */}
+          <div className="pt-2 border-t border-neutral-800 text-[10.5px] font-sans text-neutral-500 text-center">
+            Rendered in real-time WebGL
           </div>
         </div>
       )}
@@ -829,47 +626,15 @@ export function EngineHud({
             </button>
           </div>
 
-          {/* Hairline Divider & Spec Matrix */}
-          <div className="border-t border-neutral-800 pt-2.5 space-y-1.5 text-[12px] font-sans">
-            <div className="flex items-baseline justify-between">
-              <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
-                World
-              </span>
-              <span className="font-sans text-neutral-200 text-[12px]">
-                Floating studio island
-              </span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
-                Status
-              </span>
-              <span className="font-sans text-neutral-200 text-[12px] font-medium">
-                In development
-              </span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
-                Version
-              </span>
-              <span className="font-mono tabular-nums text-neutral-300 text-[11px]">
-                0.5.0
-              </span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
-                Walkthrough
-              </span>
-              <span className="font-sans text-[11px] font-medium flex items-center gap-1.5">
-                {tourStatus === "completed" ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <span>Completed</span>
-                    <span aria-hidden="true">✓</span>
-                  </span>
-                ) : tourStatus === "dismissed" ? (
-                  <span className="text-neutral-400">Incomplete</span>
-                ) : (
-                  <span className="text-amber-400/90">Unviewed</span>
-                )}
+          {/* Hairline Divider & Story Summary */}
+          <div className="border-t border-neutral-800 pt-2.5 space-y-2 text-[12px] font-sans">
+            <p className="text-neutral-400 text-[12px] leading-relaxed">
+              Explore the architectural estate, indoor botanical solarium, research study, and orbital satellites suspended in space.
+            </p>
+            <div className="flex items-center justify-between text-neutral-400 text-[11px] pt-1 border-t border-neutral-900">
+              <span>Experience tour</span>
+              <span className="text-neutral-300 font-medium">
+                {tourStatus === "completed" ? "Completed ✓" : "Available"}
               </span>
             </div>
           </div>
@@ -967,8 +732,8 @@ export function EngineHud({
               ? "bg-white text-black shadow font-semibold"
               : "text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95"
           }`}
-          title="Pan [Drag to pan]"
-          aria-label="Pan Tool"
+          title="Move camera"
+          aria-label="Move camera tool"
           aria-pressed={activeTool === "pan"}
         >
           <Hand className="w-4 h-4" />
@@ -983,8 +748,8 @@ export function EngineHud({
               ? "bg-white text-black shadow font-semibold"
               : "text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95"
           }`}
-          title="Orbit [Rotate 3D view]"
-          aria-label="Orbit Tool"
+          title="Rotate view"
+          aria-label="Rotate view tool"
           aria-pressed={activeTool === "orbit"}
         >
           <Rotate3d className="w-4 h-4" />
@@ -999,8 +764,8 @@ export function EngineHud({
               ? "bg-white text-black shadow font-semibold"
               : "text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95"
           }`}
-          title="Perspectives [V]"
-          aria-label="Camera Perspectives"
+          title="Places to visit"
+          aria-label="Places to visit"
           aria-expanded={activeDrawer === "views"}
         >
           <Compass className="w-4 h-4" />
@@ -1015,8 +780,8 @@ export function EngineHud({
               ? "bg-white text-black shadow font-semibold"
               : "text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95"
           }`}
-          title={`Atmosphere [W]: ${weatherPreset}`}
-          aria-label={`Atmospheric weather: ${weatherPreset}`}
+          title={`Sky & atmosphere: ${weatherPreset.replace(/_/g, " ")}`}
+          aria-label={`Sky and atmosphere: ${weatherPreset.replace(/_/g, " ")}`}
           aria-expanded={activeDrawer === "weather"}
         >
           {weatherPreset === "clear" || weatherPreset === "partly_cloudy" ? (
@@ -1040,8 +805,8 @@ export function EngineHud({
           type="button"
           onClick={() => onStepZoom("in")}
           className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
-          title="Zoom In [+]"
-          aria-label="Zoom In"
+          title="Zoom in"
+          aria-label="Zoom in"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
@@ -1051,8 +816,8 @@ export function EngineHud({
           type="button"
           onClick={() => onStepZoom("out")}
           className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
-          title="Zoom Out [-]"
-          aria-label="Zoom Out"
+          title="Zoom out"
+          aria-label="Zoom out"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
@@ -1060,7 +825,7 @@ export function EngineHud({
         {/* Hairline Divider */}
         <div className="shrink-0 w-px h-5 bg-neutral-800 mx-0.5" aria-hidden="true" />
 
-        {/* Engine Telemetry Drawer Toggle */}
+        {/* Overview Drawer Toggle */}
         <button
           type="button"
           onClick={() => setActiveDrawer((prev) => (prev === "engine" ? "none" : "engine"))}
@@ -1069,8 +834,8 @@ export function EngineHud({
               ? "bg-white text-black shadow font-semibold"
               : "text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95"
           }`}
-          title="Engine Telemetry [~]"
-          aria-label="Toggle Engine Telemetry"
+          title="Island overview"
+          aria-label="Toggle Island Overview"
           aria-expanded={activeDrawer === "engine"}
         >
           <Sliders className="w-4 h-4" />
@@ -1085,7 +850,7 @@ export function EngineHud({
               ? "bg-white text-black shadow font-semibold"
               : "text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95"
           }`}
-          title="About ORRA [I]"
+          title="About ORRA"
           aria-label="About ORRA"
           aria-expanded={activeDrawer === "about"}
         >
@@ -1097,8 +862,8 @@ export function EngineHud({
           type="button"
           onClick={onReturnToEntry}
           className="shrink-0 flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
-          title="Return to Title Screen"
-          aria-label="Return to Title Screen"
+          title="Exit to title screen"
+          aria-label="Exit to title screen"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>

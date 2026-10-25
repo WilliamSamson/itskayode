@@ -1,0 +1,341 @@
+.workspace {
+  --ws-bg: #000;
+  --ws-panel: #111113;
+  --ws-raised: #1c1b1e;
+  --ws-line: #343034;
+  --ws-ink: #f3e9dd;
+  --ws-muted: #b5a8a0;
+  --ws-red: #991f1f;
+  --ws-orange: #b04a25;
+  background: var(--ws-bg);
+  color: var(--ws-ink);
+  min-height: 100dvh;
+  font-family: Arial, sans-serif;
+  user-select: text;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--ws-line);
+  flex-wrap: wrap;
+}
+.header > a {
+  padding: 12px;
+}
+.logo {
+  width: 140px;
+  height: auto;
+}
+.status {
+  font-size: 11px;
+  color: var(--ws-muted);
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.header .actions {
+  margin-left: auto;
+}
+.notice {
+  padding: 7px 20px;
+  border-bottom: 1px solid var(--ws-line);
+  color: var(--ws-muted);
+  font-size: 12px;
+  min-height: 33px;
+}
+.body {
+  display: grid;
+  grid-template-columns: 140px minmax(250px, 1fr) 355px;
+  min-height: calc(100dvh - 145px);
+}
+.navigation {
+  border-right: 1px solid var(--ws-line);
+  padding: 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.navigation button {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+}
+.navigation .active {
+  background: var(--ws-red);
+  color: var(--ws-ink);
+}
+.stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 540px;
+  overflow: hidden;
+}
+.stage > div:nth-child(2) {
+  flex: 1;
+  min-height: 440px;
+}
+.toolbar {
+  padding: 12px;
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--ws-line);
+}
+.stageFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 12px;
+  font-size: 11px;
+  color: var(--ws-muted);
+  border-top: 1px solid var(--ws-line);
+}
+.panel {
+  border-left: 1px solid var(--ws-line);
+  background: var(--ws-panel);
+  padding: 22px;
+  max-height: calc(100dvh - 135px);
+  overflow: auto;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+.eyebrow {
+  color: var(--ws-muted);
+  font-size: 11px;
+  margin: 0;
+}
+.workspace h1 {
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 600;
+  margin: 5px 0 8px;
+}
+.workspace h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 20px 0 10px;
+}
+.workspace h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 24px 0 10px;
+}
+.workspace p {
+  margin: 10px 0;
+}
+.workspace label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ws-muted);
+  margin: 12px 0;
+  min-width: 0;
+}
+.workspace input,
+.workspace select,
+.workspace textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: 7px;
+  background: var(--ws-bg);
+  color: var(--ws-ink);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.workspace textarea {
+  min-height: 95px;
+  resize: vertical;
+}
+.workspace button {
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid var(--ws-line);
+  border-radius: 7px;
+  background: var(--ws-raised);
+  color: var(--ws-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.workspace button:hover {
+  border-color: var(--ws-muted);
+}
+.workspace button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.workspace button[aria-pressed="true"] {
+  background: var(--ws-red);
+}
+.workspace :is(button, input, textarea, select, a):focus-visible {
+  outline: 2px solid var(--ws-orange);
+  outline-offset: 3px;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.muted {
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.workspace .check {
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+}
+.workspace .check input {
+  width: 17px;
+  min-height: 17px;
+  accent-color: var(--ws-red);
+}
+.workspace article {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--ws-line);
+  overflow-wrap: anywhere;
+}
+.workspace article small {
+  color: var(--ws-muted);
+  display: block;
+  font-size: 10px;
+  margin: 8px 0;
+}
+.workspace dl {
+  margin: 20px 0;
+  border-block: 1px solid var(--ws-line);
+  padding: 8px 0;
+}
+.workspace dt {
+  color: var(--ws-muted);
+  font-size: 11px;
+  margin-top: 10px;
+}
+.workspace dd {
+  margin: 2px 0 10px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.workspace details {
+  margin: 16px 0;
+}
+.workspace summary {
+  cursor: pointer;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ws-line);
+  font-size: 12px;
+}
+.row strong {
+  font-weight: 500;
+  text-align: right;
+}
+.pre {
+  white-space: pre-wrap;
+}
+.footer {
+  border-top: 1px solid var(--ws-line);
+  padding: 9px 20px;
+  font-size: 11px;
+  color: var(--ws-muted);
+}
+.presentation .navigation,
+.presentation .panel {
+  display: none;
+}
+.presentation .body {
+  grid-template-columns: 1fr;
+}
+.presentation .stage {
+  min-height: calc(100dvh - 155px);
+}
+@media (min-width: 1600px) {
+  .body {
+    grid-template-columns: 170px minmax(0, 1fr) 410px;
+  }
+  .panel {
+    padding: 28px;
+  }
+}
+@media (max-width: 1100px) {
+  .body {
+    grid-template-columns: 110px minmax(200px, 1fr) 310px;
+  }
+  .panel {
+    padding: 16px;
+  }
+  .header {
+    gap: 10px;
+  }
+  .header .status {
+    display: none;
+  }
+}
+@media (max-width: 800px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+  .navigation {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--ws-line);
+  }
+  .navigation button {
+    flex-shrink: 0;
+  }
+  .stage {
+    min-height: 430px;
+  }
+  .stage > div:nth-child(2) {
+    min-height: 350px;
+  }
+  .panel {
+    max-height: none;
+    border-left: 0;
+    border-top: 1px solid var(--ws-line);
+    padding: 22px;
+  }
+  .header {
+    padding: 10px 12px;
+    gap: 12px;
+  }
+  .header .actions {
+    margin-left: 0;
+  }
+  .header button {
+    min-height: 44px;
+  }
+  .stageFooter {
+    font-size: 10px;
+  }
+  .presentation .stage {
+    min-height: 75dvh;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace * {
+    scroll-behavior: auto;
+    transition: none !important;
+  }
+}

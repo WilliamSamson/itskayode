@@ -16,3 +16,4 @@ scratch-*.mjs
 hardware-items.md
 tsconfig.tsbuildinfo
 .firebase/
+firebase-debug.log*

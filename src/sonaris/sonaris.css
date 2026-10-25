@@ -1,0 +1,22 @@
+/* Approved SONARIS palette: deliberately independent of portfolio theme. */
+.sonaris-page {
+  --sonaris-canvas: #000000;
+  --sonaris-stage: #000000;
+  --sonaris-line: #30323d;
+  --sonaris-ink: #f3e9dd;
+  --sonaris-muted: #dacabd;
+  --sonaris-red: #991f1f;
+  --sonaris-orange: #a64020;
+  --sonaris-yellow: #a87914;
+  --sonaris-green: #1f6b42;
+  --sonaris-copper: #754126;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sonaris-page a { transition: none; transform: none; }
+}
+
+/* SONARIS instrument motion: Framer entrances bypass transforms via useReducedMotion;
+   profile traces freeze in the colocated integrated-workspace CSS module. */
+@media (prefers-reduced-motion: reduce) {
+  [data-sonaris-case] { animation: none !important; transition: none !important; }
+}

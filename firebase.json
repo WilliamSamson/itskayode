@@ -35,6 +35,17 @@
           "destination": "/projects",
           "type": 301
         }
+      ],
+      "headers": [
+        {
+          "source": "/p/**",
+          "headers": [
+            {
+              "key": "X-Robots-Tag",
+              "value": "noindex, nofollow"
+            }
+          ]
+        }
       ]
     },
     {

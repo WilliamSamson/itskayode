@@ -853,10 +853,10 @@ export function OrraViewport() {
                 </IconButton>
                 <Divider />
                 <TextToggle pressed={arcActive} onClick={handleToggleArc}>
-                  Arc
+                  Energy beam
                 </TextToggle>
                 <TextToggle pressed={isScientificMode} onClick={handleToggleScientificUpgrade}>
-                  Science core
+                  Boost power
                 </TextToggle>
               </div>
             ) : undefined,

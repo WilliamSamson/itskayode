@@ -263,3 +263,35 @@ Measure before and after, on integrated graphics, with `renderer.info` and timed
 - **Assert behaviour, not invocation.** Every threshold, clamp and exclusion gets a **two-sided** test: it holds, *and* it bites. The second assertion is the one that catches a dead rule.
 - **A field computed but never read is a feature that does not exist.** For any per-instance or per-frame field, grep for reads, not writes, and write the consumer in the same change.
 - Anything visible gets checked in the running app from the angles that matter (for the island: high three-quarter, low side, below), in both themes and in clear weather.
+
+## SONARIS presentation guardrails
+
+- SONARIS is its own product identity, not portfolio-branded content: use its PNG logo, signature red, standalone metadata title, favicon and social preview on `/sonaris`. Preserve the portfolio identity elsewhere. Assets live in `public/sonaris/brand/`; keep original Downloads files untouched.
+
+- User correction (2026-10-21): use an S2 30 m **2D** LiDAR on a mechanically tilting mount, not an A2M12 or native 3D LiDAR. Any 3D output is reconstructed from tilted 2D scan planes. Keep the approved rover motion; use OLED-black canvas/stage and a true deep red rather than purple.
+
+- Preserve the approved SONARIS composition, expressive orange/amber/wine palette, rover illustration and personality. Do not reinterpret a cleanup request as a minimalist redesign or replace the illustration with a generic schematic.
+- Cleanup means removing unsupported claims and unnecessary decorative details, not stripping intentional art direction. Ask before materially changing layout, palette or rover appearance.
+- Centralize approved colours as semantic tokens without changing their rendered values. Geometry constants are legitimate illustration data, not UI colour violations.
+- Distinguish proposed capabilities, targets, simulations and measured results. Confirm disputed specifications with the user; do not manufacture benchmarks, telemetry or downloads.
+- Reusable prompt: `Preserve the existing SONARIS visual identity. Make only the requested cleanup, centralize approved colours without visual changes, and verify the before/after appearance.`
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
+
+
+### SONARIS engineering workspace
+
+- `/sonaris/workspace` is a local design and simulation environment, not a connected rover or authoritative Onshape document. Preserve the landing page's visual identity and separate product metadata.
+- The uploaded 2026-10-21 workspace brief supersedes stale P2/A2M12 assumptions. Use SONARIS and the mechanically tilting S2 2D LiDAR. Component models start with unknown envelopes, not guessed chassis dimensions.
+- Every numerical result must name its source: proposal, user assumption, analytical simulation or user-declared physical test. Unknown geometry is a staged inventory marker; an entered box is an envelope, not manufacturer CAD.
+- Keep persistence/import validation in `src/sonaris/lib/sonaris-workspace-state.ts`; never overwrite an invalid stored snapshot automatically. Import must clear prior project settings and local CAD references. Export before moving browsers; this workspace does not synchronize a team backend.
+- Engineering formulas belong in the tested `sonaris-engine.ts` / `sonaris-analysis.ts` modules. Changing an input must change the actual renderer or calculation. Save the inputs alongside calculated results. Do not present nominal voltage checks, envelope collision checks or heuristic coverage as complete electrical, structural or mapping validation.
+- Restore files through the task's recorded rollback, not a blanket Git reset; unrelated user changes exist.

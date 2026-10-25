@@ -9,12 +9,13 @@ import { TelemetryTracker } from "@/components/telemetry-tracker";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isOrra = pathname?.startsWith("/orra") || pathname?.startsWith("/world");
+  const isSonaris = pathname?.startsWith("/sonaris");
 
-  if (isOrra) {
+  if (isOrra || isSonaris) {
     return (
       <main
         id="main-content"
-        className="fixed inset-0 w-full h-[100dvh] min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-black p-0 m-0 z-0 touch-none overscroll-none select-none"
+        className="fixed inset-0 w-full h-[100dvh] min-h-[100dvh] max-h-[100dvh] overflow-auto bg-black p-0 m-0 z-0 select-none"
       >
         {children}
       </main>

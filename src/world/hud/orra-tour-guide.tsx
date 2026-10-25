@@ -17,9 +17,6 @@ import {
   CloudSun,
   ChevronRight,
   Rotate3d,
-  Sun,
-  Moon,
-  Zap,
   Check,
 } from "lucide-react";
 import type { CameraPerspective, NavigationTool } from "../navigation/world-navigation";
@@ -91,11 +88,11 @@ export function OrraTourGuide({
   hasEntered,
   focusedStation,
   activeTool,
-  worldTheme,
+  worldTheme: _worldTheme,
   weatherPreset: _weatherPreset,
   onFocusStation,
   onSelectTool,
-  onToggleWorldTheme,
+  onToggleWorldTheme: _onToggleWorldTheme,
   onCycleWeather,
   isOpenExternal = false,
   onCloseExternal,
@@ -211,9 +208,9 @@ export function OrraTourGuide({
     <aside
       role="region"
       aria-label="ORRA Interactive Guide"
-      className="fixed bottom-[max(7.25rem,calc(env(safe-area-inset-bottom)+6.75rem))] sm:bottom-28 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,420px)] pointer-events-auto select-none transition-all duration-300"
+      className="fixed bottom-[max(7.25rem,calc(env(safe-area-inset-bottom)+6.75rem))] sm:bottom-28 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,400px)] pointer-events-auto select-none transition-all duration-300"
     >
-      <div className="rounded-xl border border-white/10 bg-black/95 p-3.5 sm:p-4 text-white shadow-2xl backdrop-blur-md">
+      <div className="rounded-xl border border-neutral-800 bg-black p-3.5 sm:p-4 text-white shadow-2xl">
         {/* Step Progress Hairline (for active tour steps 1–4) */}
         {currentStep > 0 && (
           <div className="mb-3 flex items-center gap-1.5" aria-label={`Step ${currentStep} of 4`}>
@@ -221,11 +218,7 @@ export function OrraTourGuide({
               <div
                 key={stepIdx}
                 className={`h-0.5 flex-1 rounded-full transition-all duration-300 ${
-                  stepIdx < currentStep
-                    ? "bg-white"
-                    : stepIdx === currentStep
-                      ? "bg-[#ffb21a]"
-                      : "bg-white/15"
+                  stepIdx <= currentStep ? "bg-white" : "bg-neutral-800"
                 }`}
               />
             ))}
@@ -237,24 +230,24 @@ export function OrraTourGuide({
           <div>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <span className="font-sans text-[11px] font-medium tracking-wide text-[#ffb21a]">
-                  First-Time Visitor
+                <span className="font-sans text-[11px] font-medium text-neutral-400">
+                  Welcome to ORRA
                 </span>
                 <h3 className="font-heading text-[15px] sm:text-[16px] font-semibold text-white tracking-tight mt-0.5">
-                  Welcome to ORRA
+                  A Living World
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => dismissTour("skipped")}
-                aria-label="Dismiss tour prompt"
+                aria-label="Dismiss walkthrough prompt"
                 className="flex items-center justify-center w-7 h-7 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
             <p className="mt-1.5 font-sans text-[12.5px] leading-relaxed text-neutral-300">
-              An interactive 1 km² living world and architectural campus suspended in cosmic space. Would you like a 60-second guided tour?
+              An interactive living world and architectural estate suspended in space. Would you like a 60-second walkthrough?
             </p>
             <div className="mt-3.5 flex items-center justify-between gap-2.5">
               <button
@@ -265,7 +258,7 @@ export function OrraTourGuide({
                 }}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-white text-black font-sans text-[12px] font-semibold hover:bg-neutral-200 transition-all active:scale-95"
               >
-                <span>Take 60s Tour</span>
+                <span>Take Walkthrough</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
               <button
@@ -273,7 +266,7 @@ export function OrraTourGuide({
                 onClick={() => dismissTour("explore_freely")}
                 className="px-3 py-2 rounded-md font-sans text-[12px] font-medium text-neutral-400 hover:text-white transition-colors"
               >
-                Explore freely
+                Explore on my own
               </button>
             </div>
           </div>
@@ -284,15 +277,15 @@ export function OrraTourGuide({
           <div>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Compass className="w-4 h-4 text-[#ffb21a]" />
+                <Compass className="w-4 h-4 text-white" />
                 <span className="font-sans text-[11px] font-medium text-neutral-400">
-                  Step 1 of 4 • Navigation
+                  Step 1 of 4 · Looking around
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => dismissTour("skipped")}
-                aria-label="Skip tour"
+                aria-label="Skip walkthrough"
                 className="flex items-center justify-center w-6 h-6 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
@@ -302,16 +295,16 @@ export function OrraTourGuide({
               Explore the Island
             </h3>
             <p className="mt-1 font-sans text-[12px] leading-relaxed text-neutral-300">
-              Drag anywhere to pan across the landscape. Hold right-click, shift-key, or use 2 fingers to rotate in 3D.
+              Drag anywhere to glide across the landscape. Use two fingers or right-click to rotate around the island in 3D.
             </p>
-            <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-white/10">
+            <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-neutral-800">
               <button
                 type="button"
                 onClick={() => onSelectTool(activeTool === "orbit" ? "pan" : "orbit")}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-neutral-800 bg-neutral-900 font-sans text-[11.5px] font-medium text-neutral-300 hover:text-white hover:border-neutral-700 transition-all active:scale-95"
               >
-                <Rotate3d className="w-3.5 h-3.5 text-[#ffb21a]" />
-                <span>{activeTool === "orbit" ? "Orbiting Active" : "Toggle 3D Orbit"}</span>
+                <Rotate3d className="w-3.5 h-3.5 text-white" />
+                <span>{activeTool === "orbit" ? "3D Rotate Active" : "Switch to 3D Rotate"}</span>
               </button>
               <button
                 type="button"
@@ -330,49 +323,27 @@ export function OrraTourGuide({
           <div>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-[#ffb21a]" />
+                <Building2 className="w-4 h-4 text-white" />
                 <span className="font-sans text-[11px] font-medium text-neutral-400">
-                  Step 2 of 4 • Stations
+                  Step 2 of 4 · Places to visit
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => dismissTour("skipped")}
-                aria-label="Skip tour"
+                aria-label="Skip walkthrough"
                 className="flex items-center justify-center w-6 h-6 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
             <h3 className="font-heading text-[14.5px] sm:text-[15px] font-semibold text-white tracking-tight mt-1">
-              Inspect Facilities Up Close
+              Visit the Architecture
             </h3>
             <p className="mt-1 font-sans text-[12px] leading-relaxed text-neutral-300">
-              The island houses operational facilities. Tap any building directly or jump using the fast travel links below:
+              The island features distinct spaces nestled into the landscape. Tap any building directly or choose a destination below:
             </p>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  onFocusStation("advanced-tech-lab");
-                  advanceStep(3);
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-neutral-800 bg-neutral-900 font-sans text-[11px] font-medium text-neutral-300 hover:text-white hover:border-neutral-700 transition-all active:scale-95"
-              >
-                <Cpu className="w-3 h-3 text-[#ffb21a]" />
-                <span>Tech Lab</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onFocusStation("power-grid");
-                  advanceStep(3);
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-neutral-800 bg-neutral-900 font-sans text-[11px] font-medium text-neutral-300 hover:text-white hover:border-neutral-700 transition-all active:scale-95"
-              >
-                <Zap className="w-3 h-3 text-[#ffd84d]" />
-                <span>Power Grid</span>
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -384,8 +355,41 @@ export function OrraTourGuide({
                 <Building2 className="w-3 h-3 text-neutral-400" />
                 <span>West Pavilion</span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onFocusStation("boardroom");
+                  advanceStep(3);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-neutral-800 bg-neutral-900 font-sans text-[11px] font-medium text-neutral-300 hover:text-white hover:border-neutral-700 transition-all active:scale-95"
+              >
+                <Building2 className="w-3 h-3 text-neutral-400" />
+                <span>Library & Study</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onFocusStation("talent-desk");
+                  advanceStep(3);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-neutral-800 bg-neutral-900 font-sans text-[11px] font-medium text-neutral-300 hover:text-white hover:border-neutral-700 transition-all active:scale-95"
+              >
+                <Building2 className="w-3 h-3 text-neutral-400" />
+                <span>Solarium</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onFocusStation("advanced-tech-lab");
+                  advanceStep(3);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-neutral-800 bg-neutral-900 font-sans text-[11px] font-medium text-neutral-300 hover:text-white hover:border-neutral-700 transition-all active:scale-95"
+              >
+                <Cpu className="w-3 h-3 text-neutral-400" />
+                <span>Creative Studio</span>
+              </button>
             </div>
-            <div className="mt-3 flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <div className="mt-3 flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
               <button
                 type="button"
                 onClick={() => advanceStep(3)}
@@ -398,34 +402,34 @@ export function OrraTourGuide({
           </div>
         )}
 
-        {/* Step 3: Hardware Interactivity */}
+        {/* Step 3: Inside Spaces */}
         {currentStep === 3 && (
           <div>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-[#ffb21a]" />
+                <Building2 className="w-4 h-4 text-white" />
                 <span className="font-sans text-[11px] font-medium text-neutral-400">
-                  Step 3 of 4 • Systems
+                  Step 3 of 4 · Interactive spaces
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => dismissTour("skipped")}
-                aria-label="Skip tour"
+                aria-label="Skip walkthrough"
                 className="flex items-center justify-center w-6 h-6 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
             <h3 className="font-heading text-[14.5px] sm:text-[15px] font-semibold text-white tracking-tight mt-1">
-              Live Hardware Controls
+              Inside Each Space
             </h3>
             <p className="mt-1 font-sans text-[12px] leading-relaxed text-neutral-300">
-              Each facility features interactive engineering controls. When focused on a station, look at the top control bar to toggle room lights, tune grid power, or inspect the cryogenic core.
+              When you step into a room, use the island bar at the top of your screen to switch lights on or off. Press Escape anytime to step back outside.
             </p>
-            <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-white/10">
+            <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-neutral-800">
               <span className="font-sans text-[11px] text-neutral-400">
-                Tip: Press <kbd className="px-1 py-0.5 bg-neutral-900 border border-neutral-700 rounded text-neutral-200">Esc</kbd> to exit any room
+                Press <kbd className="px-1 py-0.5 bg-neutral-900 border border-neutral-700 rounded text-neutral-200">Esc</kbd> anytime to step outside
               </span>
               <button
                 type="button"
@@ -444,37 +448,27 @@ export function OrraTourGuide({
           <div>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
-                <CloudSun className="w-4 h-4 text-[#ffb21a]" />
+                <CloudSun className="w-4 h-4 text-white" />
                 <span className="font-sans text-[11px] font-medium text-neutral-400">
-                  Step 4 of 4 • Atmosphere
+                  Step 4 of 4 · Sky & atmosphere
                 </span>
               </div>
               <button
                 type="button"
                 onClick={completeTour}
-                aria-label="Finish tour"
+                aria-label="Finish walkthrough"
                 className="flex items-center justify-center w-6 h-6 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
             <h3 className="font-heading text-[14.5px] sm:text-[15px] font-semibold text-white tracking-tight mt-1">
-              Weather and time
+              Weather and Time
             </h3>
             <p className="mt-1 font-sans text-[12px] leading-relaxed text-neutral-300">
-              Change the sky with <kbd className="px-1 py-0.5 bg-neutral-900 border border-neutral-700 rounded text-neutral-200">W</kbd>. Tap the island at the top to pause time or speed it up.
+              Tap the weather icon in the dock to bring rain, snow, or fog. Tap the island clock at the top to pause or speed up time.
             </p>
             <div className="mt-2.5 flex items-center gap-2">
-              {onToggleWorldTheme && (
-                <button
-                  type="button"
-                  onClick={onToggleWorldTheme}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-neutral-800 bg-neutral-900 font-sans text-[11.5px] font-medium text-neutral-300 hover:text-white hover:border-neutral-700 transition-all active:scale-95"
-                >
-                  {worldTheme === "light" ? <Moon className="w-3.5 h-3.5 text-neutral-400" /> : <Sun className="w-3.5 h-3.5 text-amber-300" />}
-                  <span>{worldTheme === "light" ? "Switch to Space" : "Switch to Daylight"}</span>
-                </button>
-              )}
               {onCycleWeather && (
                 <button
                   type="button"
@@ -486,14 +480,14 @@ export function OrraTourGuide({
                 </button>
               )}
             </div>
-            <div className="mt-3 flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <div className="mt-3 flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
               <button
                 type="button"
                 onClick={completeTour}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#ffb21a] text-black font-sans text-[12px] font-semibold hover:bg-amber-400 transition-all active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white text-black font-sans text-[12px] font-semibold hover:bg-neutral-200 transition-all active:scale-95"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Complete Tour</span>
+                <span>Finish Walkthrough</span>
               </button>
             </div>
           </div>
