@@ -499,6 +499,320 @@ for (const [end, x] of [
     );
   }
 export const assemblyParts: AssemblyPart[] = [...fixed, ...drivers, ...drivetrain];
+
+export interface PartProposalFacts {
+  role: string;
+  electrical: string;
+  envelopeBasis: string;
+  bedFit300: string;
+  engineeringGate: string;
+  mechanicalLinks: { partId: string; relation: string }[];
+}
+
+export const CANONICAL_HARNESS: AssemblyConnection[] = [
+  { id: "h-bat-prot", fromPart: "battery", fromPort: "supply", toPart: "protection", toPort: "power-in" },
+  { id: "h-prot-disc", fromPart: "protection", fromPort: "protected-out", toPart: "disconnect", toPort: "power-in" },
+  { id: "h-disc-conva", fromPart: "disconnect", fromPort: "drive-supply", toPart: "converter-a", toPort: "power-in" },
+  { id: "h-disc-convb", fromPart: "disconnect", fromPort: "drive-supply", toPart: "converter-b", toPort: "power-in" },
+  { id: "h-disc-drv1", fromPart: "disconnect", fromPort: "drive-supply", toPart: "driver-1", toPort: "power-in" },
+  { id: "h-disc-drv2", fromPart: "disconnect", fromPort: "drive-supply", toPart: "driver-2", toPort: "power-in" },
+  { id: "h-disc-servo", fromPart: "disconnect", fromPort: "drive-supply", toPart: "servo", toPort: "power-in" },
+  { id: "h-conva-pi5", fromPart: "converter-a", fromPort: "output", toPart: "pi5", toPort: "power-in" },
+  { id: "h-conva-cool", fromPart: "converter-a", fromPort: "output", toPart: "cooler", toPort: "power-in" },
+  { id: "h-conva-pico", fromPart: "converter-a", fromPort: "output", toPart: "pico", toPort: "power-in" },
+  { id: "h-convb-lidar", fromPart: "converter-b", fromPort: "output", toPart: "lidar", toPort: "power-in" },
+  { id: "h-convb-imu", fromPart: "converter-b", fromPort: "output", toPart: "imu", toPort: "power-in" },
+  { id: "h-convb-mon", fromPart: "converter-b", fromPort: "output", toPart: "monitor", toPort: "power-in" },
+  { id: "h-estop-disc", fromPart: "estop", fromPort: "stop-out", toPart: "disconnect", toPort: "stop-request" },
+  { id: "h-lidar-pi5", fromPart: "lidar", fromPort: "scan-data", toPart: "pi5", toPort: "lidar" },
+  { id: "h-pi5-pico", fromPart: "pi5", fromPort: "control", toPart: "pico", toPort: "host" },
+  { id: "h-imu-pico", fromPart: "imu", fromPort: "orientation", toPart: "pico", toPort: "imu" },
+  { id: "h-pico-drv1", fromPart: "pico", fromPort: "pwm-a", toPart: "driver-1", toPort: "pwm" },
+  { id: "h-pico-drv2", fromPart: "pico", fromPort: "pwm-b", toPart: "driver-2", toPort: "pwm" },
+  { id: "h-drv1-mfl", fromPart: "driver-1", fromPort: "motor-a", toPart: "motor-front-left", toPort: "drive-in" },
+  { id: "h-drv1-mrl", fromPart: "driver-1", fromPort: "motor-b", toPart: "motor-rear-left", toPort: "drive-in" },
+  { id: "h-drv2-mfr", fromPart: "driver-2", fromPort: "motor-a", toPart: "motor-front-right", toPort: "drive-in" },
+  { id: "h-drv2-mrr", fromPart: "driver-2", fromPort: "motor-b", toPart: "motor-rear-right", toPort: "drive-in" },
+  { id: "h-enc-pico", fromPart: "motor-front-left", fromPort: "encoder", toPart: "pico", toPort: "encoder" }
+];
+
+export function getPartProposalFacts(part: AssemblyPart): PartProposalFacts {
+  const [w, h, d] = part.size;
+  const fitsXY = Math.max(w, d) <= 300 && Math.min(w, d) <= 300;
+  const bedFit300 =
+    part.group === "structure" || part.kind === "bracket"
+      ? fitsXY
+        ? `Clears 300 × 300 mm XY bed (${w} × ${d} mm; Z=${h} mm unverified)`
+        : `Exceeds 300 × 300 mm XY bed (${w} × ${d} mm) — requires split joint or CNC plate`
+      : `Purchased module (${w} × ${d} × ${h} mm envelope)`;
+
+  switch (part.id) {
+    case "lidar":
+      return {
+        role: "Primary 2D laser rangefinder; swept across pitch planes by tilt gimbal for 3D reconstruction",
+        electrical: "5 V DC regulated rail · UART scan stream to Raspberry Pi 5",
+        envelopeBasis: "77 × 77 × 42 mm visual envelope (pending Slamtec S2 CAD verification)",
+        bedFit300,
+        engineeringGate: "Verify optical aperture keep-out and slip-free cable flex across tilt arc",
+        mechanicalLinks: [
+          { partId: "tilt-frame", relation: "Mounted on tilt gimbal yoke" },
+          { partId: "servo", relation: "Pitched by ST3215 actuator" }
+        ]
+      };
+    case "servo":
+      return {
+        role: "Steps and holds RPLIDAR S2 pitch angle across 2D scan planes",
+        electrical: "12 V bus supply · Serial bus command link",
+        envelopeBasis: "42 × 40 × 24 mm concept placeholder (ST3215 12 V variant)",
+        bedFit300,
+        engineeringGate: "Confirm horn coupling geometry, backlash, and serial bus interface board",
+        mechanicalLinks: [
+          { partId: "tilt-frame", relation: "Drives gimbal pitch axis" },
+          { partId: "lidar", relation: "Tilts 2D scanner payload" }
+        ]
+      };
+    case "tilt-frame":
+      return {
+        role: "Custom U-yoke and bearing mount supporting the tilting RPLIDAR S2 head",
+        electrical: "Passive fabricated structure (no electrical terminals)",
+        envelopeBasis: "110 × 72 × 100 mm concept layout envelope",
+        bedFit300,
+        engineeringGate: "Release bearing seat tolerances and shaft alignment CAD before print",
+        mechanicalLinks: [
+          { partId: "deck", relation: "Bolts to upper electronics deck" },
+          { partId: "lidar", relation: "Carries RPLIDAR S2" },
+          { partId: "servo", relation: "Coupled to ST3215 horn" }
+        ]
+      };
+    case "pi5":
+      return {
+        role: "High-level mapping computer for 2D scan registration and 3D point cloud assembly",
+        electrical: "5.1 V regulated compute rail · USB/UART host to Pico & RPLIDAR S2",
+        envelopeBasis: "85 × 56 mm official Raspberry Pi 5 board outline; 12 mm height placeholder",
+        bedFit300,
+        engineeringGate: "Verify USB/Ethernet connector keep-outs and thermal headroom under load",
+        mechanicalLinks: [
+          { partId: "deck", relation: "Standoff-mounted on electronics deck" },
+          { partId: "cooler", relation: "Cooled by top heatsink/blower" },
+          { partId: "microsd", relation: "Boots from 128 GB microSD" }
+        ]
+      };
+    case "cooler":
+      return {
+        role: "Active heatsink and blower preventing Raspberry Pi 5 thermal throttling",
+        electrical: "5 V fan header from compute rail",
+        envelopeBasis: "60 × 18 × 46 mm illustrative envelope (exact model unresolved)",
+        bedFit300,
+        engineeringGate: "Select exact cooler SKU and verify vertical clearance under tilt frame",
+        mechanicalLinks: [{ partId: "pi5", relation: "Clips onto Pi 5 BCM2712 SoC" }]
+      };
+    case "microsd":
+      return {
+        role: "Non-volatile OS and local spatial scan log storage (128 GB per proposal)",
+        electrical: "3.3 V SDIO slot on Raspberry Pi 5",
+        envelopeBasis: "15 × 1 × 11 mm standard microSD form factor",
+        bedFit300,
+        engineeringGate: "Ensure chassis service opening allows card removal without deck disassembly",
+        mechanicalLinks: [{ partId: "pi5", relation: "Inserted into Pi 5 underside slot" }]
+      };
+    case "pico":
+      return {
+        role: "Deterministic real-time motion controller for 4-wheel PWM and encoder polling",
+        electrical: "5 V VBUS / 3.3 V logic · Dual PWM out to MDD10A drivers",
+        envelopeBasis: "51 × 21 mm official Raspberry Pi Pico (RP2040) board outline",
+        bedFit300,
+        engineeringGate: "Verify quadrature encoder level-shifting and watchdog halt timeout",
+        mechanicalLinks: [{ partId: "deck", relation: "Mounted on upper electronics deck" }]
+      };
+    case "imu":
+      return {
+        role: "9-DOF orientation sensor providing pitch/roll/yaw reference for scan alignment",
+        electrical: "3.3 V / 5 V sensor rail · I2C/UART orientation stream to Pico",
+        envelopeBasis: "28 × 5 × 22 mm concept breakout envelope (BNO085 SKU unresolved)",
+        bedFit300,
+        engineeringGate: "Select specific BNO085 breakout vendor and calibrate rigid offset to LiDAR",
+        mechanicalLinks: [{ partId: "deck", relation: "Mounted near chassis centerline" }]
+      };
+    case "battery":
+      return {
+        role: "Primary onboard energy storage (Bioenno BLF-1212AS LiFePO4, 12 V-class 12 Ah)",
+        electrical: "12.8 V nominal LiFePO4 chemistry · Feeds main fuse & disconnect bus",
+        envelopeBasis: "150 × 70 × 85 mm concept placeholder; datasheet case dimensions pending",
+        bedFit300,
+        engineeringGate: "Verify usable discharge curve, charger interface, and CG placement on base",
+        mechanicalLinks: [
+          { partId: "base", relation: "Seated on lower chassis plate" },
+          { partId: "battery-restraint", relation: "Secured by hold-down restraint" }
+        ]
+      };
+    case "battery-restraint":
+      return {
+        role: "Mechanical hold-down strap and bracket preventing battery shift during motion",
+        electrical: "Passive mechanical restraint",
+        envelopeBasis: "160 × 7 × 94 mm concept geometry (design unresolved in proposal)",
+        bedFit300,
+        engineeringGate: "Size restraint after verifying physical BLF-1212AS battery casing dimensions",
+        mechanicalLinks: [
+          { partId: "battery", relation: "Clamps BLF-1212AS pack" },
+          { partId: "base", relation: "Anchored to lower chassis plate" }
+        ]
+      };
+    case "converter-a":
+      return {
+        role: "Step-down DC-DC regulator supplying 5 V compute and logic rail",
+        electrical: "12 V bus input → Regulated compute rail output (model unresolved)",
+        envelopeBasis: "65 × 25 × 40 mm placeholder envelope",
+        bedFit300,
+        engineeringGate: "Select buck converter rated for Pi 5 peak current (≥5 A @ 5.1 V)",
+        mechanicalLinks: [{ partId: "base", relation: "Mounted on lower power bay" }]
+      };
+    case "converter-b":
+      return {
+        role: "Dedicated DC-DC regulator isolating RPLIDAR S2 and sensor rail from drive noise",
+        electrical: "12 V bus input → Regulated sensor rail output (model unresolved)",
+        envelopeBasis: "65 × 25 × 40 mm placeholder envelope",
+        bedFit300,
+        engineeringGate: "Specify output voltage/ripple rating and verify thermal dissipation",
+        mechanicalLinks: [{ partId: "base", relation: "Mounted on lower power bay" }]
+      };
+    case "driver-1":
+    case "driver-2":
+      return {
+        role: `Dual-channel 10 A H-bridge motor driver (${part.id === "driver-1" ? "Left" : "Right"} drivetrain pair)`,
+        electrical: "5–30 V input (10 A continuous / 30 A peak per channel) · Logic PWM + DIR",
+        envelopeBasis: "84.5 × 62 mm official Cytron MDD10A footprint; 15 mm height placeholder",
+        bedFit300,
+        engineeringGate: "Verify terminal wire gauge, heatsink airflow, and 12 V vs 24 V motor rail",
+        mechanicalLinks: [{ partId: "deck", relation: "Mounted on electronics deck" }]
+      };
+    case "estop":
+      return {
+        role: "Externally accessible mushroom emergency stop for immediate drive cut-off",
+        electrical: "Hardware interrupt / contactor trip loop (exact switch SKU unresolved)",
+        envelopeBasis: "30 × 38 × 30 mm concept envelope",
+        bedFit300,
+        engineeringGate: "Verify hardwired series break with drive contactor independent of software",
+        mechanicalLinks: [{ partId: "deck", relation: "Top-mounted for unobstructed hand access" }]
+      };
+    case "disconnect":
+      return {
+        role: "Main drive bus contactor / master isolation switch downstream of branch fuse",
+        electrical: "12 V primary bus isolation controlled by E-Stop loop (model unresolved)",
+        envelopeBasis: "45 × 45 × 40 mm concept envelope",
+        bedFit300,
+        engineeringGate: "Select contactor/switch rated for stall current and verify E-Stop wiring",
+        mechanicalLinks: [{ partId: "base", relation: "Mounted on forward lower deck" }]
+      };
+    case "protection":
+      return {
+        role: "Primary overcurrent fuse block protecting battery and branch distribution",
+        electrical: "In-line between battery positive terminal and disconnect (rating unresolved)",
+        envelopeBasis: "48 × 25 × 45 mm concept placeholder",
+        bedFit300,
+        engineeringGate: "Size main and branch fuse ratings from worst-case motor + converter loads",
+        mechanicalLinks: [{ partId: "base", relation: "Mounted adjacent to battery output" }]
+      };
+    case "monitor":
+      return {
+        role: "Onboard bus voltage and current sensor for battery state-of-charge telemetry",
+        electrical: "12 V inline sense · Telemetry output to controller (model unresolved)",
+        envelopeBasis: "35 × 12 × 35 mm concept placeholder",
+        bedFit300,
+        engineeringGate: "Select shunt monitor IC/breakout and define low-voltage cutoff threshold",
+        mechanicalLinks: [{ partId: "base", relation: "Mounted on lower power bay" }]
+      };
+    case "base":
+      return {
+        role: "Main lower structural floor carrying drivetrain motors, battery, and power bay",
+        electrical: "Passive structural plate",
+        envelopeBasis: "360 × 8 × 280 mm concept layout plate",
+        bedFit300,
+        engineeringGate: "360 mm length exceeds 300 × 300 mm printer bed — split into keyed halves or CNC",
+        mechanicalLinks: [
+          { partId: "rail-left", relation: "Bolted to left chassis rail" },
+          { partId: "rail-right", relation: "Bolted to right chassis rail" },
+          { partId: "deck", relation: "Supports upper electronics deck via standoffs" }
+        ]
+      };
+    case "deck":
+      return {
+        role: "Upper mounting platform for compute boards, motor drivers, IMU, and tilt gimbal",
+        electrical: "Passive structural plate",
+        envelopeBasis: "310 × 6 × 240 mm concept layout plate",
+        bedFit300,
+        engineeringGate: "Trim 310 mm length to ≤300 mm or split to fit verified 300 × 300 mm bed",
+        mechanicalLinks: [
+          { partId: "base", relation: "Supported above lower base plate" },
+          { partId: "tilt-frame", relation: "Supports LiDAR tilt frame" },
+          { partId: "pi5", relation: "Carries Raspberry Pi 5 & Pico" }
+        ]
+      };
+    case "rail-left":
+    case "rail-right":
+      return {
+        role: "Longitudinal side stiffening rail tying front and rear motor stations",
+        electrical: "Passive structural member",
+        envelopeBasis: "340 × 40 × 8 mm concept side rail",
+        bedFit300,
+        engineeringGate: "340 mm span exceeds 300 mm bed axis — use 2-piece spliced rail or extrusion",
+        mechanicalLinks: [
+          { partId: "base", relation: "Reinforces lower chassis plate edge" },
+          { partId: "deck", relation: "Supports upper deck perimeter" }
+        ]
+      };
+    default: {
+      if (part.kind === "motor") {
+        const corner = part.id.replace("motor-", "");
+        return {
+          role: `70:1 spur gearmotor with 64 CPR quadrature encoder (${corner.replace("-", " ")})`,
+          electrical: "24 V nominal rating · Driven by Cytron MDD10A + 5 V encoder feedback",
+          envelopeBasis: "Ø37 × 70 mm body + 16 mm D-shaft (86 mm total ref envelope; 205 g)",
+          bedFit300,
+          engineeringGate: "Proposal risk gate: 24 V nominal motor running on 12 V-class battery bus",
+          mechanicalLinks: [
+            { partId: `wheel-${corner}`, relation: "Drives 127 mm Mecanum wheel via 6 mm D-shaft" },
+            { partId: `bracket-${corner}`, relation: "Clamped to base by motor bracket" }
+          ]
+        };
+      }
+      if (part.kind === "wheel") {
+        const corner = part.id.replace("wheel-", "");
+        return {
+          role: `127 mm Mecanum wheel with 45° angled rollers for holonomic motion (${corner.replace("-", " ")})`,
+          electrical: "Mechanical rolling element (driven by Pololu #4694 shaft)",
+          envelopeBasis: "Ø127 mm proposed diameter × 45 mm placeholder width",
+          bedFit300,
+          engineeringGate: "Confirm left/right roller handedness pairing and 6 mm shaft hub coupling",
+          mechanicalLinks: [
+            { partId: `motor-${corner}`, relation: "Coupled to Pololu #4694 output shaft" }
+          ]
+        };
+      }
+      if (part.kind === "bracket") {
+        const corner = part.id.replace("bracket-", "");
+        return {
+          role: `90° mounting bracket securing ${corner.replace("-", " ")} 37D gearmotor to base`,
+          electrical: "Passive mounting hardware",
+          envelopeBasis: "48 × 46 × 5 mm concept bracket envelope (model unresolved)",
+          bedFit300,
+          engineeringGate: "Verify M3 bolt pattern against Pololu 37D gearbox faceplate drawing",
+          mechanicalLinks: [
+            { partId: `motor-${corner}`, relation: "Mounts 37D gearmotor faceplate" },
+            { partId: "base", relation: "Bolts to lower chassis plate" }
+          ]
+        };
+      }
+      return {
+        role: part.label,
+        electrical: "Unresolved in proposal",
+        envelopeBasis: `${w} × ${h} × ${d} mm concept envelope`,
+        bedFit300,
+        engineeringGate: part.note,
+        mechanicalLinks: []
+      };
+    }
+  }
+}
 export function createAssemblyState(): AssemblyState {
   return {
     positions: Object.fromEntries(

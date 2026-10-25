@@ -164,20 +164,23 @@ export function FabricationStage({
 
     // Demand-driven rendering with smooth damping loop
     let frameId = 0;
+    let inAnimate = false;
     let disposed = false;
 
     const animate = () => {
-      frameId = 0;
-      if (disposed) return;
+      if (disposed) {
+        frameId = 0;
+        return;
+      }
+      inAnimate = true;
       const coasting = controls.update();
       renderer.render(scene, camera);
-      if (coasting) {
-        frameId = requestAnimationFrame(animate);
-      }
+      inAnimate = false;
+      frameId = coasting ? requestAnimationFrame(animate) : 0;
     };
 
     const wake = () => {
-      if (!frameId && !disposed) {
+      if (!frameId && !inAnimate && !disposed) {
         frameId = requestAnimationFrame(animate);
       }
     };

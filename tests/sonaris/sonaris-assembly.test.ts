@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   assemblyParts,
+  CANONICAL_HARNESS,
   createAssemblyState,
+  getPartProposalFacts,
   snapPosition,
   connectionIssue,
   validateAssemblyState
@@ -130,4 +132,24 @@ it("rejects different port kinds and allows explicitly unresolved voltages only 
   expect(connectionIssue({ ...link, fromPart: "driver-1", fromPort: "absent" })).toContain(
     "Unknown port"
   );
+});
+
+it("validates every canonical harness link and provides fact-checked proposal facts for all 28 parts", () => {
+  expect(
+    validateAssemblyState({
+      positions: createAssemblyState().positions,
+      connections: CANONICAL_HARNESS
+    })
+  ).toBe(true);
+  const partIds = new Set(assemblyParts.map((p) => p.id));
+  for (const part of assemblyParts) {
+    const facts = getPartProposalFacts(part);
+    expect(facts.role.length).toBeGreaterThan(10);
+    expect(facts.electrical.length).toBeGreaterThan(5);
+    expect(facts.envelopeBasis.length).toBeGreaterThan(5);
+    expect(facts.engineeringGate.length).toBeGreaterThan(5);
+    for (const m of facts.mechanicalLinks) {
+      expect(partIds.has(m.partId)).toBe(true);
+    }
+  }
 });

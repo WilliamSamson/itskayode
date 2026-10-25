@@ -1,4 +1,5 @@
-/* Approved SONARIS palette: deliberately independent of portfolio theme. */
+/* Approved SONARIS palette & studio tokens: deliberately independent of portfolio theme. */
+:root,
 .sonaris-page {
   --sonaris-canvas: #000000;
   --sonaris-stage: #000000;
@@ -10,13 +11,34 @@
   --sonaris-yellow: #a87914;
   --sonaris-green: #1f6b42;
   --sonaris-copper: #754126;
+
+  /* Studio Instrument Surfaces & Text */
+  --sonaris-bezel: #2e3138;
+  --sonaris-deck: #e5e1d8;
+  --sonaris-viewport: #e9e5dc;
+  --sonaris-panel: #f4f1eb;
+  --sonaris-card: #ffffff;
+  --sonaris-card-hover: #faf8f4;
+  --sonaris-track: #d8d4ca;
+  --sonaris-border: #d0cbc0;
+  --sonaris-border-strong: #c5bfb3;
+  --sonaris-studio-ink: #111319;
+  --sonaris-studio-body: #4a4740;
+  --sonaris-studio-muted: #68655e;
 }
+
 @media (prefers-reduced-motion: reduce) {
-  .sonaris-page a { transition: none; transform: none; }
+  .sonaris-page a {
+    transition: none;
+    transform: none;
+  }
 }
 
 /* SONARIS instrument motion: Framer entrances bypass transforms via useReducedMotion;
    profile traces freeze in the colocated integrated-workspace CSS module. */
 @media (prefers-reduced-motion: reduce) {
-  [data-sonaris-case] { animation: none !important; transition: none !important; }
+  [data-sonaris-case] {
+    animation: none !important;
+    transition: none !important;
+  }
 }

@@ -364,20 +364,23 @@ export default function ScanStage({
 
     // Gold-standard demand-driven rendering with smooth OrbitControls inertia damping
     let frameId = 0;
+    let inAnimate = false;
     let disposed = false;
 
     const animate = () => {
-      frameId = 0;
-      if (disposed) return;
+      if (disposed) {
+        frameId = 0;
+        return;
+      }
+      inAnimate = true;
       const unsettled = controls.update();
       renderer.render(scene, camera);
-      if (unsettled) {
-        frameId = requestAnimationFrame(animate);
-      }
+      inAnimate = false;
+      frameId = unsettled ? requestAnimationFrame(animate) : 0;
     };
 
     const wake = () => {
-      if (!frameId && !disposed) {
+      if (!frameId && !inAnimate && !disposed) {
         frameId = requestAnimationFrame(animate);
       }
     };

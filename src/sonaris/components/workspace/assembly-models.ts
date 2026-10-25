@@ -181,34 +181,30 @@ export function createAssemblyModel(part: AssemblyPart): THREE.Group {
         cylinder(2, 2, d * 1.02, 10, aluminum, Math.cos(a) * radius * 0.38, Math.sin(a) * radius * 0.38, 0, "z");
       }
 
-      // 10 Contoured Vulcanized Rubber Rollers at 45° offset
+      // 10 Contoured Vulcanized Rubber Rollers at 45° offset (flattened onto root so mergeGeometries batches all 10 into 1 draw call)
       const rollerAngle = (isRight ? 1 : -1) * (Math.PI / 4);
+      const rollerQuat = new THREE.Quaternion();
+      const rollerEuler = new THREE.Euler();
+      const rollerPos = new THREE.Vector3();
+      const rollerScale = new THREE.Vector3(1, 1, 1);
+      const rollerMat = new THREE.Matrix4();
       for (let i = 0; i < 10; i++) {
         const a = (i / 10) * Math.PI * 2;
         const rx = Math.cos(a) * radius * 0.82;
         const ry = Math.sin(a) * radius * 0.82;
 
-        const rollerGroup = new THREE.Group();
-        rollerGroup.position.set(rx, ry, 0);
+        rollerEuler.set(rollerAngle, 0, a);
+        rollerQuat.setFromEuler(rollerEuler);
+        rollerPos.set(rx, ry, 0);
+        rollerMat.compose(rollerPos, rollerQuat, rollerScale);
 
-        // Roller body: Barrel capsule with rubber tread
-        const rollerMesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(radius * 0.13, d * 0.65, 8, 16),
-          rubberBlack
-        );
-        rollerMesh.castShadow = true;
-        rollerMesh.receiveShadow = true;
-        rollerGroup.add(rollerMesh);
+        const rollerGeom = new THREE.CapsuleGeometry(radius * 0.13, d * 0.65, 6, 12);
+        rollerGeom.applyMatrix4(rollerMat);
+        add(rollerGeom, rubberBlack);
 
-        // Stainless steel axle pin
-        const axleMesh = new THREE.Mesh(
-          new THREE.CylinderGeometry(1.6, 1.6, d * 0.85, 12),
-          brushedSteel
-        );
-        rollerGroup.add(axleMesh);
-
-        rollerGroup.rotation.set(rollerAngle, 0, a);
-        root.add(rollerGroup);
+        const axleGeom = new THREE.CylinderGeometry(1.6, 1.6, d * 0.85, 8);
+        axleGeom.applyMatrix4(rollerMat);
+        add(axleGeom, brushedSteel);
       }
       root.userData.motion = "wheel";
       break;

@@ -17,7 +17,7 @@ export interface AssemblyStageProps {
   onMove: (id: string, position: Position) => void;
   onPort: (partId: string, portId: string) => void;
   exploded: boolean;
-  explodeAmount?: number; // 0.0 to 1.0 continuous separation
+  explodeAmount?: number;
   view: "top" | "isometric" | "front";
   mode: "orbit" | "move" | "connect";
   activeGroup: "all" | "drive" | "sensing" | "power" | "safety" | "compute" | "structure";
@@ -31,6 +31,8 @@ interface PartEntry {
   group: THREE.Group;
   model: THREE.Group;
   target: THREE.Vector3;
+  explodeVec: THREE.Vector3;
+  materials: THREE.MeshStandardMaterial[];
   ports: Map<string, THREE.Mesh>;
 }
 
@@ -81,12 +83,11 @@ function dispose(root: THREE.Object3D) {
 function updateSelectionEmissive(state: SceneState, selectedId: string) {
   for (const entry of state.entries.values()) {
     const isSelected = entry.part.id === selectedId;
-    entry.model.traverse((object) => {
-      if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
-        object.material.emissive.setHex(isSelected ? 0x3d2810 : 0);
-        object.material.emissiveIntensity = isSelected ? 0.25 : 0;
-      }
-    });
+    for (let i = 0; i < entry.materials.length; i++) {
+      const m = entry.materials[i];
+      m.emissive.setHex(isSelected ? 0x3d2810 : 0);
+      m.emissiveIntensity = isSelected ? 0.25 : 0;
+    }
   }
 }
 
@@ -115,6 +116,8 @@ function buildParts(state: SceneState, props: AssemblyStageProps) {
         ? 1
         : 0;
 
+  const portCylinder = new THREE.CylinderGeometry(3, 3, 3.5, 10);
+
   for (const part of props.parts) {
     const group = new THREE.Group();
     const model = createAssemblyModel(part);
@@ -122,12 +125,20 @@ function buildParts(state: SceneState, props: AssemblyStageProps) {
     group.rotation.set(...(part.rotation.map(THREE.MathUtils.degToRad) as Position));
     group.add(model);
 
-    // Cache kinematic nodes for high-performance zero-traversal animation
+    const materials: THREE.MeshStandardMaterial[] = [];
+    const seenMat = new Set<THREE.Material>();
+
     model.traverse((node) => {
       if (node.userData.motion === "wheel") {
         state.kineticNodes.push({ object: node, type: "wheel" });
       } else if (node.userData.motion === "scanner") {
         state.kineticNodes.push({ object: node, type: "scanner" });
+      }
+      if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
+        if (!seenMat.has(node.material)) {
+          seenMat.add(node.material);
+          materials.push(node.material);
+        }
       }
     });
 
@@ -136,7 +147,7 @@ function buildParts(state: SceneState, props: AssemblyStageProps) {
       const portColor =
         port.kind === "power" ? 0x991f1f : port.kind === "drive" ? 0xa87914 : 0x1f6b42;
       const sphere = new THREE.Mesh(
-        new THREE.CylinderGeometry(3, 3, 3.5, 12),
+        portCylinder.clone(),
         new THREE.MeshStandardMaterial({
           color: portColor,
           roughness: 0.35,
@@ -146,23 +157,33 @@ function buildParts(state: SceneState, props: AssemblyStageProps) {
       sphere.position.set(...port.position);
       sphere.userData.partId = part.id;
       sphere.userData.portId = port.id;
-      sphere.visible = true;
+      sphere.visible = props.mode === "connect" || props.connections.length > 0;
       group.add(sphere);
       ports.set(port.id, sphere);
     }
 
     const position = props.positions[part.id] ?? part.home;
+    const explodeVec = new THREE.Vector3(...part.explode);
     const target = new THREE.Vector3(...position);
     if (eAmount > 0) {
-      target.addScaledVector(new THREE.Vector3(...part.explode), eAmount);
+      target.addScaledVector(explodeVec, eAmount);
     }
     group.position.copy(target);
     group.visible = props.activeGroup === "all" || props.activeGroup === part.group;
 
     state.content.add(group);
-    state.entries.set(part.id, { part, group, model, ports, target });
+    state.entries.set(part.id, {
+      part,
+      group,
+      model,
+      ports,
+      target,
+      explodeVec,
+      materials
+    });
   }
 
+  portCylinder.dispose();
   updateSelectionEmissive(state, props.selectedId);
   state.wiresDirty = true;
   state.renderer.shadowMap.needsUpdate = true;
@@ -228,14 +249,14 @@ export function AssemblyStage(props: AssemblyStageProps) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
-    // CRITICAL PERFORMANCE FIX: Do not re-render the shadow map every frame during orbit!
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.cursor = "grab";
     renderer.domElement.setAttribute(
       "aria-label",
-      "Interactive 3D assembly. Drag empty canvas to orbit; scroll to zoom; click to inspect."
+      "Interactive 3D assembly. Drag to orbit; scroll to zoom; click part to inspect; Shift-drag or Slide mode to translate part."
     );
     element.appendChild(renderer.domElement);
 
@@ -249,10 +270,9 @@ export function AssemblyStage(props: AssemblyStageProps) {
     controls.maxDistance = 3500;
     controls.maxPolarAngle = Math.PI * 0.49;
     controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    controls.dampingFactor = 0.09;
     controls.rotateSpeed = 0.85;
 
-    // Laboratory Instrument Lighting: Balanced ambient hemisphere + sharp key directional light
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0xa09686, 2.8);
     scene.add(hemiLight);
 
@@ -277,7 +297,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
     fillLight.position.set(-600, 500, -600);
     scene.add(fillLight);
 
-    // Precision Engineering Ground Grid
     const gridHelper = new THREE.GridHelper(2400, 48, 0xb8b2a4, 0xd0cbc0);
     gridHelper.position.y = -2;
     scene.add(gridHelper);
@@ -297,11 +316,16 @@ export function AssemblyStage(props: AssemblyStageProps) {
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let frame = 0;
+    let inAnimate = false;
     let last = 0;
     let disposed = false;
     let hoverRaf = 0;
+    let wasPartsMoving = false;
     const tmpA = new THREE.Vector3();
     const tmpB = new THREE.Vector3();
+    const lastCamPos = new THREE.Vector3().copy(camera.position);
+    const lastTargetPos = new THREE.Vector3().copy(controls.target);
+
     let drag: {
       entry: PartEntry;
       offset: THREE.Vector3;
@@ -309,36 +333,54 @@ export function AssemblyStage(props: AssemblyStageProps) {
       startY: number;
       moved: boolean;
     } | null = null;
-    let clickStart: { x: number; y: number; id: string } | null = null;
+    let clickStart: { x: number; y: number } | null = null;
 
     const animate = (now: number) => {
-      frame = 0;
-      if (disposed) return;
+      if (disposed) {
+        frame = 0;
+        return;
+      }
+      // Guard against synchronous controls.update() -> "change" -> wake() spawning duplicate rAF loops!
+      inAnimate = true;
       const dt = Math.min((now - (last || now)) / 1000, 0.05);
       last = now;
       const state = runtime.current;
-      if (!state) return;
+      if (!state) {
+        inAnimate = false;
+        frame = 0;
+        return;
+      }
 
-      // CONTINUOUS DAMPING FIX: Check if controls are actively moving camera
-      const controlsActive = controls.update();
-      let unsettled = controlsActive;
+      controls.update();
+      const camMoved =
+        lastCamPos.distanceToSquared(camera.position) > 0.01 ||
+        lastTargetPos.distanceToSquared(controls.target) > 0.01;
+      lastCamPos.copy(camera.position);
+      lastTargetPos.copy(controls.target);
 
+      let partsMoving = false;
       for (const entry of state.entries.values()) {
         if (drag?.entry !== entry) {
-          if (entry.group.position.distanceToSquared(entry.target) > 0.005) {
+          if (entry.group.position.distanceToSquared(entry.target) > 0.01) {
             entry.group.position.lerp(
               entry.target,
-              reduced.matches ? 1 : 1 - Math.exp(-dt * 26)
+              reduced.matches ? 1 : 1 - Math.exp(-dt * 28)
             );
-            unsettled = true;
-            state.renderer.shadowMap.needsUpdate = true;
-          } else {
+            partsMoving = true;
+          } else if (!entry.group.position.equals(entry.target)) {
             entry.group.position.copy(entry.target);
+            state.renderer.shadowMap.needsUpdate = true;
           }
         }
       }
 
-      // Fast kinematic updates with zero tree traversals
+      if (wasPartsMoving && !partsMoving) {
+        state.renderer.shadowMap.needsUpdate = true;
+      }
+      wasPartsMoving = partsMoving;
+
+      const unsettled = camMoved || partsMoving;
+
       if (latest.current.running && !reduced.matches) {
         for (let i = 0; i < state.kineticNodes.length; i++) {
           const k = state.kineticNodes[i];
@@ -350,10 +392,8 @@ export function AssemblyStage(props: AssemblyStageProps) {
         }
       }
 
-      scene.updateMatrixWorld(true);
-
-      // Catenary Dynamic 3D Wiring Cables - only update when positions moved
-      if (unsettled || drag || state.wiresDirty) {
+      if (state.wireEntries.length > 0 && (partsMoving || drag || state.wiresDirty)) {
+        content.updateMatrixWorld(true);
         for (let w = 0; w < state.wireEntries.length; w++) {
           const wire = state.wireEntries[w];
           wire.from.getWorldPosition(tmpA);
@@ -364,7 +404,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
 
           for (let i = 0; i < 25; i++) {
             const t = i / 24;
-            // Physical gravity catenary droop (downward -Y)
             const sag = -Math.sin(t * Math.PI) * sagAmount;
             attribute.setXYZ(
               i,
@@ -381,6 +420,7 @@ export function AssemblyStage(props: AssemblyStageProps) {
       }
 
       renderer.render(scene, camera);
+      inAnimate = false;
 
       if (unsettled || (latest.current.running && !reduced.matches)) {
         frame = requestAnimationFrame(animate);
@@ -391,7 +431,9 @@ export function AssemblyStage(props: AssemblyStageProps) {
     };
 
     const wake = () => {
-      if (!frame && !disposed) frame = requestAnimationFrame(animate);
+      if (!frame && !inAnimate && !disposed) {
+        frame = requestAnimationFrame(animate);
+      }
     };
 
     const stateInstance: SceneState = {
@@ -410,20 +452,28 @@ export function AssemblyStage(props: AssemblyStageProps) {
     };
     runtime.current = stateInstance;
 
-    // ATOMIC SYNCHRONOUS BUILD: Meshes, Wires & Camera are constructed BEFORE ready=true
     buildParts(stateInstance, latest.current);
     buildWires(stateInstance, latest.current.connections);
     setCameraPreset(stateInstance, latest.current.view);
 
     controls.addEventListener("change", wake);
-    controls.addEventListener("start", wake);
-    controls.addEventListener("end", wake);
+    controls.addEventListener("start", () => {
+      if (!drag) renderer.domElement.style.cursor = "grabbing";
+      wake();
+    });
+    controls.addEventListener("end", () => {
+      if (!drag) renderer.domElement.style.cursor = "grab";
+      wake();
+    });
     reduced.addEventListener("change", wake);
 
     const resize = new ResizeObserver(() => {
       if (!element.clientWidth || !element.clientHeight) return;
+      const aspect = element.clientWidth / element.clientHeight;
       renderer.setSize(element.clientWidth, element.clientHeight);
-      camera.aspect = element.clientWidth / element.clientHeight;
+      camera.aspect = aspect;
+      // Scale zoom smoothly on square/portrait tablet viewports (iPad Pro 4:3, Tab S8+ split/portrait) so exploded parts never clip
+      camera.zoom = Math.min(1.06, Math.max(0.74, aspect / 1.12));
       camera.updateProjectionMatrix();
       renderer.shadowMap.needsUpdate = true;
       wake();
@@ -446,6 +496,7 @@ export function AssemblyStage(props: AssemblyStageProps) {
     const pointer = new THREE.Vector2();
     const plane = new THREE.Plane();
     const hitPoint = new THREE.Vector3();
+    const upAxis = new THREE.Vector3(0, 1, 0);
 
     const cast = (x: number, y: number) => {
       const bounds = renderer.domElement.getBoundingClientRect();
@@ -476,6 +527,14 @@ export function AssemblyStage(props: AssemblyStageProps) {
     };
 
     const down = (event: PointerEvent) => {
+      const wantMove = latest.current.mode === "move" || event.shiftKey;
+
+      // Fast path for normal Orbit mode: ZERO raycasting on pointerdown so camera rotation starts with 0ms latency!
+      if (latest.current.mode === "orbit" && !wantMove) {
+        clickStart = { x: event.clientX, y: event.clientY };
+        return;
+      }
+
       cast(event.clientX, event.clientY);
       const hit = hits()[0];
       if (!hit) return;
@@ -483,7 +542,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
       const id = identify(hit.object);
       if (!id) return;
 
-      // In connect mode: link terminals
       if (latest.current.mode === "connect") {
         const port = hits().find((candidate) => typeof candidate.object.userData.portId === "string");
         if (port) {
@@ -493,19 +551,12 @@ export function AssemblyStage(props: AssemblyStageProps) {
         return;
       }
 
-      // ORBIT FIX: In orbit mode, do NOT disable controls! Let OrbitControls orbit freely everywhere!
-      // We only store clickStart so that on a short click without drag (<4px) we select the component.
-      if (latest.current.mode === "orbit") {
-        clickStart = { x: event.clientX, y: event.clientY, id };
-        return;
-      }
-
-      // Move mode: drag component on the ground plane
+      // Slide / Move part along datum plane
       latest.current.onSelect(id);
       const entry = runtime.current?.entries.get(id);
       if (!entry) return;
 
-      plane.set(new THREE.Vector3(0, 1, 0), -entry.group.position.y);
+      plane.set(upAxis, -entry.group.position.y);
       if (!ray.ray.intersectPlane(plane, hitPoint)) return;
 
       drag = {
@@ -516,49 +567,61 @@ export function AssemblyStage(props: AssemblyStageProps) {
         moved: false
       };
       controls.enabled = false;
+      renderer.domElement.style.cursor = "grabbing";
       renderer.domElement.setPointerCapture(event.pointerId);
     };
 
     const move = (event: PointerEvent) => {
-      cast(event.clientX, event.clientY);
       if (drag) {
+        cast(event.clientX, event.clientY);
         if (ray.ray.intersectPlane(plane, hitPoint)) {
           drag.entry.group.position.copy(hitPoint).add(drag.offset);
           drag.moved ||=
             Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 3;
           if (runtime.current) {
             runtime.current.wiresDirty = true;
-            runtime.current.renderer.shadowMap.needsUpdate = true;
           }
           wake();
         }
-      } else {
-        // Throttled cursor hover testing prevents mouse move lag
-        if (!hoverRaf) {
-          hoverRaf = requestAnimationFrame(() => {
-            hoverRaf = 0;
-            if (disposed) return;
-            const hasHits = hits().length > 0;
-            renderer.domElement.style.cursor = hasHits
-              ? latest.current.mode === "move"
-                ? "grab"
-                : latest.current.mode === "connect"
-                  ? "crosshair"
-                  : "pointer"
-              : "default";
-          });
-        }
+        return;
+      }
+
+      // In orbit mode (no Shift), never raycast on pointermove—keep 100% of CPU/GPU for smooth 60fps orbit!
+      if (
+        event.buttons !== 0 ||
+        (latest.current.mode === "orbit" && !event.shiftKey)
+      ) {
+        return;
+      }
+
+      if (!hoverRaf) {
+        const cx = event.clientX;
+        const cy = event.clientY;
+        hoverRaf = requestAnimationFrame(() => {
+          hoverRaf = 0;
+          if (disposed) return;
+          cast(cx, cy);
+          const hasHits = hits().length > 0;
+          renderer.domElement.style.cursor = hasHits
+            ? latest.current.mode === "connect"
+              ? "crosshair"
+              : "move"
+            : "grab";
+        });
       }
     };
 
     const up = (event: PointerEvent) => {
-      // In orbit mode: if the user clicked without dragging, select the component
+      // Stationary click in orbit mode: raycast once on click release to select & inspect part
       if (clickStart) {
         const dist = Math.hypot(event.clientX - clickStart.x, event.clientY - clickStart.y);
-        if (dist < 5) {
-          latest.current.onSelect(clickStart.id);
-        }
         clickStart = null;
+        if (dist < 5) {
+          cast(event.clientX, event.clientY);
+          const hit = hits()[0];
+          const id = hit ? identify(hit.object) : null;
+          if (id) latest.current.onSelect(id);
+        }
       }
 
       if (drag?.moved) {
@@ -570,16 +633,20 @@ export function AssemblyStage(props: AssemblyStageProps) {
             : latest.current.exploded
               ? 1
               : 0;
-        const offset = new THREE.Vector3(...entry.part.explode).multiplyScalar(eAmount);
-        latest.current.onMove(entry.part.id, [p.x - offset.x, p.y - offset.y, p.z - offset.z]);
+        latest.current.onMove(entry.part.id, [
+          p.x - entry.explodeVec.x * eAmount,
+          p.y - entry.explodeVec.y * eAmount,
+          p.z - entry.explodeVec.z * eAmount
+        ]);
         entry.target.copy(p);
       }
-      drag = null;
-      controls.enabled = true;
-      if (runtime.current) {
+      if (drag && runtime.current) {
         runtime.current.wiresDirty = true;
         runtime.current.renderer.shadowMap.needsUpdate = true;
       }
+      drag = null;
+      controls.enabled = true;
+      renderer.domElement.style.cursor = "grab";
       if (renderer.domElement.hasPointerCapture(event.pointerId)) {
         renderer.domElement.releasePointerCapture(event.pointerId);
       }
@@ -590,6 +657,7 @@ export function AssemblyStage(props: AssemblyStageProps) {
       clickStart = null;
       drag = null;
       controls.enabled = true;
+      renderer.domElement.style.cursor = "grab";
       wake();
     };
 
@@ -603,7 +671,7 @@ export function AssemblyStage(props: AssemblyStageProps) {
       const id = event.dataTransfer?.getData("text/sonaris-part");
       if (!id) return;
       cast(event.clientX, event.clientY);
-      plane.set(new THREE.Vector3(0, 1, 0), 0);
+      plane.set(upAxis, 0);
       if (ray.ray.intersectPlane(plane, hitPoint)) {
         latest.current.onDropPart?.(id, [hitPoint.x, 0, hitPoint.z]);
       }
@@ -616,7 +684,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
     renderer.domElement.addEventListener("dragover", dragover);
     renderer.domElement.addEventListener("drop", drop);
 
-    // Initial render pass so canvas is populated before display
     if (element.clientWidth && element.clientHeight) {
       renderer.setSize(element.clientWidth, element.clientHeight);
       camera.aspect = element.clientWidth / element.clientHeight;
@@ -634,8 +701,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
       resize.disconnect();
       visibilityObserver.disconnect();
       controls.removeEventListener("change", wake);
-      controls.removeEventListener("start", wake);
-      controls.removeEventListener("end", wake);
       controls.dispose();
       reduced.removeEventListener("change", wake);
       renderer.domElement.removeEventListener("pointerdown", down, true);
@@ -651,7 +716,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
     };
   }, []);
 
-  // Rebuild parts when part array changes
   useEffect(() => {
     const state = runtime.current;
     if (!state || !ready) return;
@@ -660,7 +724,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
     state.wake();
   }, [ready, props.parts]);
 
-  // Position, Explode Slider & Filter Visibility Updates
   useEffect(() => {
     const state = runtime.current;
     if (!state || !ready) return;
@@ -672,18 +735,25 @@ export function AssemblyStage(props: AssemblyStageProps) {
           ? 1
           : 0;
 
+    let visibilityChanged = false;
     for (const entry of state.entries.values()) {
       const position = props.positions[entry.part.id] ?? entry.part.home;
       entry.target.set(...position);
       if (eAmount > 0) {
-        entry.target.addScaledVector(new THREE.Vector3(...entry.part.explode), eAmount);
+        entry.target.addScaledVector(entry.explodeVec, eAmount);
       }
-      entry.group.visible =
+      const nextVisible =
         props.activeGroup === "all" || props.activeGroup === entry.part.group;
+      if (entry.group.visible !== nextVisible) {
+        entry.group.visible = nextVisible;
+        visibilityChanged = true;
+      }
     }
 
     state.wiresDirty = true;
-    state.renderer.shadowMap.needsUpdate = true;
+    if (visibilityChanged) {
+      state.renderer.shadowMap.needsUpdate = true;
+    }
     state.wake();
   }, [
     ready,
@@ -693,7 +763,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
     props.activeGroup
   ]);
 
-  // Selection Emissive Highlight Updates (isolated from slider updates)
   useEffect(() => {
     const state = runtime.current;
     if (!state || !ready) return;
@@ -701,23 +770,22 @@ export function AssemblyStage(props: AssemblyStageProps) {
     state.wake();
   }, [ready, props.selectedId]);
 
-  // Port Visibility & Interaction Mode
   useEffect(() => {
     const state = runtime.current;
     if (!state || !ready) return;
 
+    const showPorts = props.mode === "connect" || props.connections.length > 0;
     for (const entry of state.entries.values()) {
       for (const [id, sphere] of entry.ports) {
-        sphere.visible = props.mode === "connect";
+        sphere.visible = showPorts;
         const pending =
           props.pendingPort?.partId === entry.part.id && props.pendingPort.portId === id;
         sphere.scale.setScalar(pending ? 1.8 : 1);
       }
     }
     state.wake();
-  }, [ready, props.mode, props.pendingPort]);
+  }, [ready, props.mode, props.pendingPort, props.connections.length]);
 
-  // 3D Wiring Harness Connections
   useEffect(() => {
     const state = runtime.current;
     if (!state || !ready) return;
@@ -725,7 +793,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
     state.wake();
   }, [ready, props.connections]);
 
-  // Camera Presets
   useEffect(() => {
     const state = runtime.current;
     if (!state || !ready) return;
@@ -733,7 +800,6 @@ export function AssemblyStage(props: AssemblyStageProps) {
     state.wake();
   }, [ready, props.view]);
 
-  // Kinematics resume wake
   useEffect(() => {
     const state = runtime.current;
     if (!state || !ready) return;
@@ -741,21 +807,20 @@ export function AssemblyStage(props: AssemblyStageProps) {
   }, [ready, props.running]);
 
   return (
-    <div className="relative h-full min-h-[300px] w-full overflow-hidden rounded-[24px] bg-[#E5E1D8]">
+    <div className="relative h-full min-h-[300px] w-full overflow-hidden bg-[var(--sonaris-deck)]">
       <div ref={host} className="absolute inset-0" />
 
-      {/* Precision Laboratory Loading Skeleton */}
       {!ready && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-[#E5E1D8] p-6 font-mono text-[11px] text-[#68655E] select-none">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-[var(--sonaris-deck)] p-6 font-mono text-[11px] text-[var(--sonaris-studio-muted)] select-none">
           <div className="flex items-center gap-2.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#111319] animate-pulse" />
-            <strong className="tracking-wider uppercase text-[#111319] text-[12px]">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--sonaris-red)] animate-pulse" />
+            <strong className="tracking-wider uppercase text-[var(--sonaris-studio-ink)] text-[12px]">
               SONARIS · 3D Spatial Twin
             </strong>
           </div>
-          <div className="flex items-center gap-2 text-[10px] text-[#7A766E]">
-            <span className="inline-block h-1.5 w-24 overflow-hidden rounded-full bg-[#D5D0C6]">
-              <span className="block h-full w-2/3 animate-pulse rounded-full bg-[#111319]" />
+          <div className="flex items-center gap-2 text-[10px] text-[var(--sonaris-studio-muted)]">
+            <span className="inline-block h-1.5 w-24 overflow-hidden rounded-full bg-[var(--sonaris-track)]">
+              <span className="block h-full w-2/3 animate-pulse rounded-full bg-[var(--sonaris-red)]" />
             </span>
             <span>Initializing Kinematics</span>
           </div>
@@ -765,7 +830,7 @@ export function AssemblyStage(props: AssemblyStageProps) {
       {error && (
         <p
           role="alert"
-          className="absolute inset-x-4 top-4 rounded-xl border border-[#991F1F] bg-white p-4 font-mono text-[13px] text-[#991F1F]"
+          className="absolute inset-x-4 top-4 rounded-xl border border-[var(--sonaris-red)] bg-[var(--sonaris-card)] p-4 font-mono text-[13px] text-[var(--sonaris-red)]"
         >
           {error}
         </p>

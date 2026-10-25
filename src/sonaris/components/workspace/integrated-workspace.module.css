@@ -1,25 +1,141 @@
 .instrument {
-  --instrument-ink: #111319;
-  --instrument-red: #991f1f;
+  --instrument-ink: var(--sonaris-studio-ink, #111319);
+  --instrument-red: var(--sonaris-red, #991f1f);
+  background: var(--sonaris-canvas);
+  color: var(--sonaris-studio-ink);
 }
+
+/* Adaptive outer shell: fits 100dvh cleanly on PC, laptop, iPad Pro (4:3), and Galaxy Tab S8+ (16:10) */
+.viewportShell {
+  min-height: 100dvh;
+  padding: clamp(6px, 1.4vmin, 20px);
+}
+
+.bezelFrame {
+  max-width: 1540px;
+  padding: clamp(5px, 0.8vmin, 11px);
+  display: flex;
+  flex-direction: column;
+}
+
+.deckSurface {
+  padding: clamp(10px, 1.6vmin, 22px);
+  flex: 1;
+  min-height: 0;
+}
+
+.headerBar {
+  padding-bottom: clamp(8px, 1.2vmin, 13px);
+}
+
+/* On desktop & landscape tablets (width >= 960px and height >= 600px), lock frame to viewport height so zero page scrolling is needed */
+@media (min-width: 960px) and (min-height: 600px) {
+  .viewportShell {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  .bezelFrame {
+    height: min(calc(100dvh - clamp(12px, 2.8vmin, 40px)), 1040px);
+  }
+}
+
 .instrument button,
 .instrument a,
 .instrument input {
   -webkit-tap-highlight-color: transparent;
 }
+
 .instrument button:focus-visible,
 .instrument a:focus-visible,
 .instrument input:focus-visible {
   outline: 2px solid var(--instrument-red);
-  outline-offset: 4px;
+  outline-offset: 2px;
 }
+
 .instrument button:active {
   transform: translateY(1px);
 }
+
+/* Segmented Pill Strip: left button rounded-left/flat-right, middle flat, right button flat-left/rounded-right */
+.segmentedNav {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 9999px;
+  background: var(--sonaris-track);
+  border: 1px solid var(--sonaris-border-strong);
+  padding: 2.5px;
+  gap: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.segmentedBtn {
+  position: relative;
+  isolation: isolate;
+  flex-shrink: 0;
+  padding: clamp(4px, 0.6vmin, 6px) clamp(11px, 1.3vw, 16px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: clamp(10px, 0.8vw, 11px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sonaris-studio-body);
+  background: rgba(255, 255, 255, 0.38);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.segmentedBtn:first-child {
+  border-radius: 9999px 2px 2px 9999px;
+  padding-left: clamp(13px, 1.5vw, 18px);
+}
+
+.segmentedBtn:last-child {
+  border-radius: 2px 9999px 9999px 2px;
+  padding-right: clamp(13px, 1.5vw, 18px);
+}
+
+.segmentedBtn:hover {
+  color: var(--sonaris-studio-ink);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.segmentedBtn[aria-pressed="true"] {
+  color: var(--sonaris-ink);
+  background: transparent;
+}
+
+.segmentedActiveBg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--sonaris-red);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.backBtn {
+  background: var(--sonaris-card);
+  color: var(--sonaris-studio-ink);
+  border: 1px solid var(--sonaris-border-strong);
+}
+
+.backBtn:hover {
+  background: var(--sonaris-card-hover);
+  border-color: var(--sonaris-red);
+  color: var(--sonaris-red);
+}
+
 .trace path {
   stroke-dasharray: 260;
   animation: instrument-trace 1.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
+
 @keyframes instrument-trace {
   from {
     stroke-dashoffset: 260;
@@ -30,6 +146,7 @@
     opacity: 1;
   }
 }
+
 @media (prefers-reduced-motion: reduce) {
   .trace path {
     animation: none;

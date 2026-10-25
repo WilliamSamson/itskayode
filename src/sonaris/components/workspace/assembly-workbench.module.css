@@ -1,185 +1,116 @@
 .workbench {
-  --aw-ink: #111319;
-  --aw-muted: #68655e;
-  --aw-line: #d0cbc0;
-  --aw-paper: #fff;
-  --aw-red: #991f1f;
-  --aw-amber: #a87914;
-  --aw-green: #1f6b42;
-  color: var(--aw-ink);
+  color: var(--sonaris-studio-ink);
   min-width: 0;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   user-select: none;
 }
 
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 0 0 10px;
-}
-
-.tools {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.toolGroup {
-  display: inline-flex;
-  align-items: center;
-  background: #d8d4ca;
-  border: 1px solid #c5bfb3;
-  border-radius: 9999px;
-  padding: 2px;
-  gap: 2px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.toolGroup button {
-  background: transparent;
-  min-height: 28px;
-  padding: 3px 12px;
-  border-radius: 9999px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  color: #55524b;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.toolGroup button:hover {
-  background: rgba(255, 255, 255, 0.5);
-  color: #111319;
-}
-
-.toolGroup button[aria-pressed="true"] {
-  background: var(--aw-ink);
-  color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.workbench button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 9999px;
-  min-height: 30px;
-  padding: 4px 13px;
-  background: #ffffff;
-  color: #4a4740;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-  border: 1px solid #c8c3b8;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.workbench button:hover {
-  background: #faf8f4;
-  border-color: #b5afa3;
-  color: var(--aw-ink);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-}
-
-.workbench button:active {
-  transform: scale(0.98);
-}
-
-.workbench button[aria-pressed="true"] {
-  background: var(--aw-ink);
-  color: white;
-  border-color: var(--aw-ink);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.workbench button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
 .workbench :is(button, input, select, a):focus-visible {
-  outline: 2px solid var(--aw-red);
+  outline: 2px solid var(--sonaris-red);
   outline-offset: 2px;
 }
 
-.canvasRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  border: 1px solid var(--aw-line);
-  border-radius: 24px;
+.instrumentFrame {
+  border: 1px solid var(--sonaris-border);
+  border-radius: clamp(16px, 2vmin, 22px);
   overflow: hidden;
-  background: #e9e5dc;
-}
-
-.stage {
-  position: relative;
-  height: clamp(520px, 68vh, 740px);
-  min-width: 0;
+  background: var(--sonaris-viewport);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.stage > div:first-child {
-  height: 100%;
-  width: 100%;
-}
-
-.stageLabel {
-  position: absolute;
-  inset: auto 12px 12px;
+/* Single quiet control bar: segmented filter on left, flat architectural controls on right */
+.controlStrip {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  pointer-events: none;
-  background: rgba(229, 225, 216, 0.94);
-  border: 1px solid rgba(208, 203, 192, 0.8);
-  border-radius: 999px;
-  padding: 5px 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  z-index: 10;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: clamp(5px, 0.8vmin, 8px) clamp(10px, 1.4vw, 14px);
+  background: var(--sonaris-panel);
+  border-bottom: 1px solid var(--sonaris-border);
 }
 
-.explodeOverlay {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  width: min(260px, calc(100% - 24px));
-  display: flex;
+/* Signature SONARIS Segmented Filter Strip: rounded-left first, flat middle, rounded-right last */
+.toolGroup {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-radius: 999px;
-  border: 1px solid var(--aw-line);
-  background: rgba(255, 255, 255, 0.94);
-  padding: 5px 12px;
-  backdrop-filter: blur(4px);
-  z-index: 10;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--sonaris-track);
+  border: 1px solid var(--sonaris-border-strong);
+  border-radius: 9999px;
+  padding: 2px;
+  gap: 2px;
+  overflow-x: auto;
+  max-width: 100%;
 }
 
-.explodeOverlay span {
+.toolGroup button {
+  background: rgba(255, 255, 255, 0.42);
+  min-height: 24px;
+  padding: 2px clamp(8px, 0.9vw, 11px);
+  border-radius: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
   font-weight: 700;
-  color: var(--aw-ink);
+  color: var(--sonaris-studio-body);
+  border: none;
+  cursor: pointer;
   white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.toolGroup button:first-child {
+  border-radius: 9999px 2px 2px 9999px;
+  padding-left: clamp(11px, 1.1vw, 13px);
+}
+
+.toolGroup button:last-child {
+  border-radius: 2px 9999px 9999px 2px;
+  padding-right: clamp(11px, 1.1vw, 13px);
+}
+
+.toolGroup button:hover {
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--sonaris-studio-ink);
+}
+
+.toolGroup button[aria-pressed="true"] {
+  background: var(--sonaris-studio-ink);
+  color: var(--sonaris-ink);
+}
+
+/* Flat right-hand instrument controls separated by vertical hairlines */
+.instrumentCluster {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.1vw, 14px);
+  flex-wrap: wrap;
+}
+
+.inlineScrubber {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: clamp(8px, 1.1vw, 14px);
+  border-right: 1px solid var(--sonaris-border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sonaris-studio-muted);
 }
 
 .explodeSlider {
-  flex: 1;
-  height: 4px;
+  width: clamp(64px, 6.5vw, 84px);
+  height: 3px;
   appearance: none;
   -webkit-appearance: none;
-  background: var(--aw-line);
+  background: var(--sonaris-border-strong);
   border-radius: 999px;
   outline: none;
   cursor: pointer;
@@ -188,269 +119,352 @@
 .explodeSlider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: var(--aw-ink);
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--sonaris-red);
+  border: 1.5px solid var(--sonaris-card);
   cursor: pointer;
-  transition: transform 0.1s ease;
-}
-
-.explodeSlider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
 }
 
 .explodeSlider::-moz-range-thumb {
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: var(--aw-ink);
-  border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--sonaris-red);
+  border: 1.5px solid var(--sonaris-card);
   cursor: pointer;
-  transition: transform 0.1s ease;
 }
 
 .explodeVal {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--aw-ink);
-  width: 28px;
+  color: var(--sonaris-studio-ink);
+  min-width: 26px;
   text-align: right;
 }
 
+.flatGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(7px, 0.9vw, 10px);
+  padding-right: clamp(8px, 1.1vw, 14px);
+  border-right: 1px solid var(--sonaris-border);
+}
+
+.flatGroup:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.flatBtn {
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sonaris-studio-muted);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.flatBtn:hover {
+  color: var(--sonaris-studio-ink);
+}
+
+.flatBtn[aria-pressed="true"] {
+  color: var(--sonaris-red);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+}
+
+/* Adaptive 2-column split on PC & landscape tablets; stacks cleanly on portrait tablets/mobile */
+.canvasRow {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(285px, 26vw, 355px);
+}
+
+.stage {
+  position: relative;
+  height: 100%;
+  min-height: clamp(380px, 54dvh, 680px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage > div:first-child {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+}
+
+.stageHud {
+  position: absolute;
+  inset: auto 14px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--sonaris-studio-muted);
+  z-index: 10;
+}
+
+/* Architectural Specification Sheet: adapts vertical rhythm to window height */
 .inspector {
-  max-height: clamp(520px, 68vh, 740px);
-  overflow-y: auto;
-  background: #f4f1eb;
-  padding: 18px;
-  border-left: 1px solid var(--aw-line);
-  scrollbar-width: thin;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--sonaris-panel);
+  padding: clamp(11px, 1.6vmin, 18px) clamp(13px, 1.5vw, 18px);
+  border-left: 1px solid var(--sonaris-border);
   user-select: text;
+}
+
+.inspectorTop {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.kickerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .kicker {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--aw-muted);
+  color: var(--sonaris-orange);
   font-weight: 700;
 }
 
-.inspector h2 {
-  font-size: 16px;
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--sonaris-studio-muted);
+}
+
+.stepBtn {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sonaris-studio-ink);
+  cursor: pointer;
+}
+
+.stepBtn:hover {
+  color: var(--sonaris-red);
+}
+
+.titleSelectWrap {
+  position: relative;
+  margin-top: clamp(2px, 0.4vmin, 5px);
+  padding-bottom: clamp(6px, 1vmin, 10px);
+  border-bottom: 1px solid var(--sonaris-border);
+}
+
+.partSelect {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0 18px 0 0;
+  font-size: clamp(14.5px, 1.25vw, 16px);
   font-weight: 700;
   letter-spacing: -0.01em;
-  line-height: 1.25;
+  line-height: 1.2;
+  color: var(--sonaris-studio-ink);
+  cursor: pointer;
+  outline: none;
+}
+
+.selectChevron {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--sonaris-studio-muted);
+}
+
+.modelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   margin-top: 2px;
 }
 
 .model {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
-  color: var(--aw-muted);
-  line-height: 1.4;
-  margin-top: 2px;
-}
-
-.provenance {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin: 8px 0;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--aw-line);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--aw-red);
-}
-
-.note {
-  font-size: 11px;
-  line-height: 1.5;
-  color: #4a4740;
+  color: var(--sonaris-studio-muted);
 }
 
 .source {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 10px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.partSelect {
-  width: 100%;
-  margin: 10px 0 12px;
-  padding: 7px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--aw-line);
-  background: #ffffff;
-  font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-weight: 600;
-  color: var(--aw-ink);
-  cursor: pointer;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.partSelect:focus {
-  border-color: var(--aw-ink);
-  box-shadow: 0 0 0 1px var(--aw-ink);
-}
-
-.placement {
-  border-top: 1px solid var(--aw-line);
-  padding: 7px 0;
-  margin-top: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
   font-size: 10px;
-  color: var(--aw-muted);
-}
-
-.placement span {
-  font-size: 10px;
-  color: var(--aw-muted);
-}
-
-.placement strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--aw-ink);
+  color: var(--sonaris-orange);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  flex-shrink: 0;
 }
 
-.workbench .seat {
-  margin-top: 12px;
-  width: 100%;
-  min-height: 36px;
-  font-size: 11px;
-  font-weight: 600;
-  justify-content: center;
-  background: var(--aw-ink);
-  color: #ffffff;
-  border: none;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: opacity 0.15s, transform 0.1s;
+.summary {
+  font-size: clamp(10.5px, 1.3vmin, 11.5px);
+  line-height: 1.4;
+  color: var(--sonaris-studio-body);
+  padding: clamp(6px, 1vmin, 10px) 0;
+  border-bottom: 1px solid var(--sonaris-border);
 }
 
-.workbench .seat:hover {
-  opacity: 0.92;
-  color: #ffffff;
-  background: var(--aw-ink);
+/* Hairline Specification Ledger (fluid vertical padding for 800px–1440px heights) */
+.ledger {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
 }
 
-.workbench .seat:active {
-  transform: scale(0.99);
+.ledgerRow {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding: clamp(4.5px, 0.75vmin, 7.5px) 0;
+  border-bottom: 1px solid var(--sonaris-border);
 }
 
-.inspector h3 {
+.ledgerRow dt {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--aw-muted);
-  font-weight: 700;
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid var(--aw-line);
-}
-
-.port {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  border: 1px solid #dcd7ce;
-  border-radius: 10px;
-  padding: 7px 10px;
-  background: #ffffff;
-  text-align: left;
-  font-size: 10px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sonaris-studio-muted);
+}
+
+.ledgerRow dd {
+  margin: 0;
+  font-size: clamp(10px, 1.2vmin, 11px);
+  line-height: 1.3;
+  color: var(--sonaris-studio-ink);
+  font-weight: 500;
+}
+
+.monoVal {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.inlineAction {
+  margin-left: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sonaris-red);
+  text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: all 0.15s ease;
 }
 
-.port:hover {
-  background: #faf8f4;
-  border-color: var(--aw-ink);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.07);
-  transform: translateY(-1px);
+.linksBlock {
+  padding-top: clamp(6px, 1vmin, 10px);
 }
 
-.port small {
-  display: block;
+.linksHeader {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sonaris-studio-muted);
+  margin-bottom: 4px;
+}
+
+.inlineLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  line-height: 1.45;
+}
+
+.nodeLink {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: clamp(10px, 1.2vmin, 11px);
+  font-weight: 600;
+  color: var(--sonaris-studio-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--sonaris-border-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.12s ease, text-decoration-color 0.12s ease;
+}
+
+.nodeLink:hover {
+  color: var(--sonaris-red);
+  text-decoration-color: var(--sonaris-red);
+}
+
+.nodeLink small {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 9px;
   font-weight: 500;
-  color: var(--aw-muted);
-  margin-top: 1px;
+  color: var(--sonaris-studio-muted);
+  margin-left: 3px;
 }
 
-.portDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 9999px;
-  flex-shrink: 0;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
-}
-
-.power { background: var(--aw-red); }
-.drive { background: var(--aw-amber); }
-.signal { background: var(--aw-green); }
-
-.wire {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 1px solid #dcd7ce;
-  font-size: 10px;
-  gap: 6px;
-  margin-top: 4px;
-  padding: 6px 4px 2px;
-}
-
-.cancel {
-  margin-top: 8px;
-  width: 100%;
-  border-color: rgba(153, 31, 31, 0.4) !important;
-  color: var(--aw-red) !important;
-  background: rgba(153, 31, 31, 0.05) !important;
-}
-
-.cancel:hover {
-  background: rgba(153, 31, 31, 0.12) !important;
-}
-
-@media (max-width: 960px) {
+/* Portrait Tablets (iPad Pro 11"/13" portrait, Galaxy Tab S8+ portrait) & compact windows */
+@media (max-width: 959px) {
   .canvasRow {
     grid-template-columns: 1fr;
   }
   .stage {
-    height: clamp(380px, 52vh, 500px);
+    height: clamp(360px, 48dvh, 520px);
+    min-height: 360px;
   }
   .inspector {
+    height: auto;
     border-left: 0;
-    border-top: 1px solid var(--aw-line);
-    max-height: 380px;
+    border-top: 1px solid var(--sonaris-border);
+  }
+}
+
+/* On Portrait Tablets (640px - 959px), lay out the ledger in 2 clean columns so it uses the tablet width without tall vertical stacking */
+@media (min-width: 640px) and (max-width: 959px) {
+  .ledger {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
   }
 }
