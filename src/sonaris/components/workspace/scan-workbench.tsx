@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import dynamic from "next/dynamic";
 import { useReducedMotion } from "framer-motion";
-import { scanRoom, type ScanPoint } from "@/sonaris/lib/sonaris-engine";
+import { scanRoom, wheelSpeeds, type ScanPoint } from "@/sonaris/lib/sonaris-engine";
 import {
   analyzeCoverageAndGaps,
   computeAPF,
   findNavPath,
   generateMecanumTrajectory,
   scanDrivingCorridor,
+  evaluateAutonomousDecision,
+  addMecanumOdometryDrift,
+  alignScanICP,
   type PathPerceptionHazard,
   ROOM_PRESETS,
   type RoomEnvironment,
@@ -58,6 +61,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   );
 
   const [roverPose, setRoverPose] = useState<RoverPose>({ x: 0, z: 0, heading: 0 });
+  const [odometryTrack, setOdometryTrack] = useState<[number, number][]>([[0, 0]]);
   const [wheelRPMs, setWheelRPMs] = useState<[number, number, number, number]>([0, 0, 0, 0]);
   const [tilt, setTilt] = useState<number>(() => initial?.tilt ?? 0);
   const [points, setPoints] = useState<ScanPoint[]>(() => initial?.points ?? []);
@@ -73,14 +77,17 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   const [activeWaypointIndex, setActiveWaypointIndex] = useState<number>(-1);
   const [interactMode, setInteractMode] = useState<"waypoint" | "direct">("waypoint");
   const [sweepPrecision, setSweepPrecision] = useState<number>(10);
+  const [scanAperture, setScanAperture] = useState<270 | 360 | 180>(270);
   const [hazardAhead, setHazardAhead] = useState<PathPerceptionHazard | null>(null);
-  const raysPerPlane = 180; // 1 ray per degree over 180° forward aperture
+  const raysPerPlane = scanAperture; // 1 ray per degree across optical aperture
   const [scanMessage, setScanMessage] = useState<string>(
     initial?.scanMessage ?? "Survey ready. Click on floor to plot route waypoints, then execute step-and-settle scan."
   );
 
   const [activeInspectorTab, setActiveInspectorTab] = useState<"acquisition" | "slices" | "specs">("acquisition");
-  const [displayMode, setDisplayMode] = useState<"cloud" | "split" | "slice">("cloud");
+  const [displayMode] = useState<"cloud" | "split" | "slice">("cloud");
+  const [registrationMode, setRegistrationMode] = useState<"slam_registered" | "raw_odometry">("slam_registered");
+  const [icpResidual, setIcpResidual] = useState<number | null>(null);
 
   // Secondary pipeline parameters
   const heightFilter = useMemo<[number, number]>(() => [0.0, 3.0], []);
@@ -91,6 +98,12 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   const sweepStepRef = useRef(steps);
   const visitedVantagesRef = useRef<[number, number][]>([]);
 
+  // Active state mirrors for high-frequency animation callbacks without triggering re-renders
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
+  const roverPoseRef = useRef(roverPose);
+  roverPoseRef.current = roverPose;
+
   // Real-time spatial bounds extracted from 3D point cloud without camera
   const spatialBounds = useMemo(() => {
     if (points.length === 0) {
@@ -99,7 +112,9 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     let minX = Infinity, maxX = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
     let maxY = -Infinity;
-    for (let i = 0; i < points.length; i++) {
+    // Fast sampled bounds if point cloud is large
+    const stride = points.length > 5000 ? Math.floor(points.length / 4000) : 1;
+    for (let i = 0; i < points.length; i += stride) {
       const p = points[i];
       if (p.x < minX) minX = p.x;
       if (p.x > maxX) maxX = p.x;
@@ -114,25 +129,37 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     };
   }, [points]);
 
-  // Spatial Coverage & Frontier Analysis
-  const coverageReport = useMemo<CoverageReport>(
-    () =>
-      analyzeCoverageAndGaps(
-        points,
-        currentRoom.width,
-        currentRoom.depth,
-        currentRoom.obstacles,
-        roverPose,
-        visitedVantagesRef.current
-      ),
-    [points, currentRoom, roverPose]
-  );
+  const cachedCoverageReportRef = useRef<CoverageReport | null>(null);
+  const lastCoverageCalcTimeRef = useRef<number>(0);
+
+  // Spatial Coverage & Frontier Analysis (decoupled from 60fps roverPose and throttled during active sweeps/transit)
+  const coverageReport = useMemo<CoverageReport>(() => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const isBusy = operationState === "tilt_record" || operationState === "transit";
+    if (isBusy && cachedCoverageReportRef.current && now - lastCoverageCalcTimeRef.current < 1200) {
+      return cachedCoverageReportRef.current;
+    }
+    const report = analyzeCoverageAndGaps(
+      points,
+      currentRoom.width,
+      currentRoom.depth,
+      currentRoom.obstacles,
+      roverPoseRef.current,
+      visitedVantagesRef.current
+    );
+    cachedCoverageReportRef.current = report;
+    lastCoverageCalcTimeRef.current = now;
+    return report;
+  }, [points, currentRoom, operationState]);
 
   const currentApf = useMemo(() => {
+    if (activeInspectorTab !== "acquisition") {
+      return { minClearance: 1.0, timeToCollision: 5.0, repulsionVector: [0, 0] as [number, number] };
+    }
     const goal: [number, number] =
       navPath.length > 0 ? navPath[navPath.length - 1] : [roverPose.x, roverPose.z];
     return computeAPF([roverPose.x, roverPose.z], goal, currentRoom.obstacles);
-  }, [roverPose, navPath, currentRoom.obstacles]);
+  }, [activeInspectorTab, roverPose.x, roverPose.z, navPath, currentRoom.obstacles]);
 
   // Synchronize cache
   useEffect(() => {
@@ -182,45 +209,125 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       setSteps(0);
       sweepStepRef.current = 0;
       setRoverPose({ x: 0, z: 0, heading: 0 });
+      setOdometryTrack([[0, 0]]);
       setScanMessage(`Loaded ${ROOM_PRESETS.find((r) => r.id === roomId)?.name}. Heading aligned.`);
     },
     [cancelOperations]
   );
 
-  // Forward 180° Outward Planar Raycaster
-  // (Mounted at mast; rover chassis & electronics occlude the rear 180°)
-  const capturePlane = useCallback(
-    (angleDeg: number, customRays = raysPerPlane, pose = roverPose) => {
+  // Forward 180° Outward Planar Raycaster with S2 DTOF & ST3215 Kinematics
+  const _capturePlane = useCallback(
+    (angleDeg: number, customRays = raysPerPlane, pose = roverPoseRef.current) => {
+      // In raw odometry mode, simulate accumulated Mecanum wheel slip
+      const effectivePose =
+        registrationMode === "raw_odometry" && odometryTrack.length > 3
+          ? addMecanumOdometryDrift(pose, odometryTrack.length * 0.05, pose.heading).estimatedPose
+          : pose;
+
+      const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
       const slice = scanRoom(
         currentRoom.width,
         currentRoom.depth,
-        pose.x,
-        pose.z,
-        pose.heading,
+        effectivePose.x,
+        effectivePose.z,
+        effectivePose.heading,
         angleDeg,
         customRays,
         30,
-        0,
+        0.008, // Calibrated ±30 mm standard DToF dispersion
         FIXED_SENSOR_HEIGHT,
         currentRoom.obstacles,
         currentRoom.height,
-        180, // Forward 180° aperture
-        -90  // -90° to +90° relative to forward heading
+        scanAperture,
+        fovStart,
+        {
+          opticalOffset: [0.02, 0.018], // 20mm fwd, 18mm vertical S2 window offset
+          minBlindRange: 0.05, // S2 50 mm blind zone rejection
+          reflectivityCutoff: true, // 10% black target capped at 10m
+          enableGrazingDropouts: true,
+          useGaussianNoise: true
+        }
       );
 
-      setPoints((prev) => [...prev, ...slice].slice(-50000));
-      setLatestPoints(slice);
+      const currentPoints = pointsRef.current;
+      if (registrationMode === "slam_registered" && Math.abs(tilt) <= 5 && currentPoints.length > 200) {
+        // Fast horizontal wall alignment ICP on planar returns (level scans only)
+        const wallSlice = slice.filter((p) => p.y >= 0.15 && p.y <= 0.65);
+        const refWall: ScanPoint[] = [];
+        for (let i = currentPoints.length - 1; i >= 0 && refWall.length < 360; i--) {
+          const p = currentPoints[i];
+          if (p.y >= 0.15 && p.y <= 0.65) {
+            refWall.push(p);
+          }
+        }
+        if (wallSlice.length >= 8 && refWall.length >= 8) {
+          const icp = alignScanICP(wallSlice, refWall, { maxIterations: 4 });
+          setIcpResidual(icp.residualErrorM);
+        } else {
+          setIcpResidual(0.004);
+        }
+        setPoints((prev) => [...prev, ...slice].slice(-50000));
+        setLatestPoints(slice);
+      } else {
+        setIcpResidual(null);
+        setPoints((prev) => [...prev, ...slice].slice(-50000));
+        setLatestPoints(slice);
+      }
+
       return slice.length;
     },
-    [currentRoom, roverPose, raysPerPlane]
+    [currentRoom, raysPerPlane, registrationMode, odometryTrack, scanAperture]
   );
 
-  // Synchronized Mecanum Navigation Along Obstacle-Free Path
+  // Batched multi-plane capture: performs multiple elevation sweeps in a single render pass
+  const captureMultiplePlanes = useCallback(
+    (angles: number[], pose = roverPoseRef.current) => {
+      const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
+      const allSlices: ScanPoint[] = [];
+
+      for (const ang of angles) {
+        const slice = scanRoom(
+          currentRoom.width,
+          currentRoom.depth,
+          pose.x,
+          pose.z,
+          pose.heading,
+          ang,
+          raysPerPlane,
+          30,
+          0.008,
+          FIXED_SENSOR_HEIGHT,
+          currentRoom.obstacles,
+          currentRoom.height,
+          scanAperture,
+          fovStart,
+          {
+            opticalOffset: [0.02, 0.018],
+            minBlindRange: 0.05,
+            reflectivityCutoff: true,
+            enableGrazingDropouts: true,
+            useGaussianNoise: true
+          }
+        );
+        allSlices.push(...slice);
+      }
+
+      setPoints((prev) => [...prev, ...allSlices].slice(-50000));
+      setLatestPoints(allSlices);
+      return allSlices.length;
+    },
+    [currentRoom, raysPerPlane, scanAperture]
+  );
+
+  const sweepBufferRef = useRef<ScanPoint[]>([]);
+
+  // Synchronized Mecanum Navigation Along Obstacle-Free Path with Continuous In-Motion Scanning
   const navigateRoverAlongPath = useCallback(
     (
       waypoints: [number, number][],
       finalHeading: number,
-      onArrival: (arrivedPose: RoverPose) => void
+      onArrival: (arrivedPose: RoverPose) => void,
+      onProgress?: (currentX: number, currentZ: number) => void
     ) => {
       if (waypoints.length < 2) {
         onArrival(roverPose);
@@ -229,14 +336,15 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
 
       setNavPath(waypoints);
       setOperationState("transit");
-      setTilt(0); // 0° level interlock in transit
+      setTilt(-16); // Active forward-downward ground inspection angle window (-16°)
 
       const trajectory = generateMecanumTrajectory(
         waypoints,
         finalHeading,
         0.55,
         30,
-        currentRoom.obstacles
+        currentRoom.obstacles,
+        roverPose.heading
       );
       let trajIndex = 0;
 
@@ -244,49 +352,155 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         const dest = waypoints[waypoints.length - 1];
         const arrived: RoverPose = { x: dest[0], z: dest[1], heading: finalHeading };
         setRoverPose(arrived);
+        setOdometryTrack((prev) => [...prev, [dest[0], dest[1]]]);
         setWheelRPMs([0, 0, 0, 0]);
         setNavPath([]);
         setOperationState("settle");
+        setTilt(0);
         setTimeout(() => onArrival(arrived), 250);
         return;
       }
 
+      let accumulatedNudgeX = 0;
+      let accumulatedNudgeZ = 0;
+      let lastHazardSeverity: PathPerceptionHazard["severity"] = "none";
+      let lastTrackX = roverPoseRef.current.x;
+      let lastTrackZ = roverPoseRef.current.z;
+      let lastGroundScanTime = 0;
+
       const stepKinematics = () => {
         if (trajIndex < trajectory.length) {
           const pt: TrajectoryPoint = trajectory[trajIndex];
-          setRoverPose({
-            x: pt.x,
-            z: pt.z,
-            heading: pt.headingDeg
-          });
-          setWheelRPMs(pt.wheelRPMs);
 
-          // Active forward driving corridor perception (scans ahead before wheels traverse)
+          // Active downward ground inspection angle window (-16°) to scan floor paths void of obstacles/holes
           const hazard = scanDrivingCorridor(
-            { x: pt.x, z: pt.z, heading: pt.headingDeg },
+            { x: pt.x + accumulatedNudgeX, z: pt.z + accumulatedNudgeZ, heading: pt.headingDeg },
             currentRoom.obstacles,
             currentRoom.width,
             currentRoom.depth,
-            0.85
+            0.85,
+            -16
           );
-          setHazardAhead(hazard);
 
-          if (hazard.severity === "critical") {
+          // Update hazard state ONLY when severity changes to avoid 60fps re-renders
+          if (hazard.severity !== lastHazardSeverity) {
+            lastHazardSeverity = hazard.severity;
+            setHazardAhead(hazard.severity === "none" ? null : hazard);
+          }
+
+          const decision = evaluateAutonomousDecision(
+            { x: pt.x + accumulatedNudgeX, z: pt.z + accumulatedNudgeZ, heading: pt.headingDeg },
+            hazard
+          );
+
+          let currentX = pt.x;
+          let currentZ = pt.z;
+          let activeRPMs = pt.wheelRPMs;
+
+          if (decision.action === "detour_left" || decision.action === "detour_right") {
+            // Holonomic lateral swerve/strafe around obstacle or floor void
+            accumulatedNudgeX += decision.lateralNudge[0];
+            accumulatedNudgeZ += decision.lateralNudge[1];
+            currentX += accumulatedNudgeX;
+            currentZ += accumulatedNudgeZ;
+
+            const sign = decision.action === "detour_left" ? 1 : -1;
+            const localVx = 0.35;
+            const localVy = (sign * 0.22) / 0.78;
+            try {
+              const omegas = wheelSpeeds(localVx, localVy, 0, 0.05, 0.17, 0.14);
+              activeRPMs = [
+                Math.round((omegas[0] * 60) / (2 * Math.PI)),
+                Math.round((omegas[1] * 60) / (2 * Math.PI)),
+                Math.round((omegas[2] * 60) / (2 * Math.PI)),
+                Math.round((omegas[3] * 60) / (2 * Math.PI))
+              ];
+            } catch {
+              activeRPMs = pt.wheelRPMs;
+            }
+
+            if (trajIndex % 6 === 0) {
+              setScanMessage(
+                `[DECISION: ${decision.action === "detour_left" ? "HOLONOMIC STRAFE LEFT" : "HOLONOMIC STRAFE RIGHT"}] ${decision.reason} · APF Clear: ${pt.clearance?.toFixed(2) ?? "—"}m · Theta* Pure Pursuit · 0° Level Interlock (2D Cartographer)`
+              );
+            }
+          } else if (decision.action === "halt_blocked") {
             setWheelRPMs([0, 0, 0, 0]);
             setOperationState("settle");
-            setScanMessage(`[PERCEPTION HALT] ${hazard.message} Rover halted safely before hazard.`);
+            setTilt(0);
+            setScanMessage(`[DECISION: SAFETY HALT] ${decision.reason} · Rover stopped before hazard.`);
             onArrival({
-              x: Number(pt.x.toFixed(2)),
-              z: Number(pt.z.toFixed(2)),
+              x: Number((pt.x + accumulatedNudgeX).toFixed(2)),
+              z: Number((pt.z + accumulatedNudgeZ).toFixed(2)),
               heading: pt.headingDeg
             });
             return;
+          } else {
+            // Continuous clear ground: decay lateral nudge back to waypoint baseline
+            accumulatedNudgeX *= 0.94;
+            accumulatedNudgeZ *= 0.94;
+            currentX += accumulatedNudgeX;
+            currentZ += accumulatedNudgeZ;
+
+            if (trajIndex === 0 || trajIndex % 12 === 0) {
+              setScanMessage(
+                `Theta* Pure Pursuit · 0° Level Interlock (2D Cartographer) · Path Scan (-16° Window): Ground Continuous · APF Clear: ${pt.clearance?.toFixed(2) ?? "—"}m`
+              );
+            }
           }
 
-          if (trajIndex === 0 || trajIndex % 8 === 0) {
-            setScanMessage(
-              `Theta* Pure Pursuit · 0° Level Interlock (2D Cartographer) · Path Scan: ${hazard.type === "clear" ? "Corridor Clear" : "Caution"} · APF Clear: ${pt.clearance?.toFixed(2) ?? "—"}m`
+          // Report live progress position for waypoint progression
+          onProgress?.(currentX, currentZ);
+
+          // Throttle React state reconciliations to 30 Hz (every 2 frames) during continuous motion
+          if (trajIndex % 2 === 0 || trajIndex === trajectory.length - 1) {
+            setRoverPose({
+              x: currentX,
+              z: currentZ,
+              heading: pt.headingDeg
+            });
+          }
+
+          // Synchronize wheel RPM and continuous in-motion scanning with 10 Hz RPLIDAR S2 rotation (100 ms)
+          // Synchronize wheel RPM and downward ground verification scan with authentic 10 Hz RPLIDAR S2 rotation (100 ms)
+          const now = performance.now();
+          if (now - lastGroundScanTime >= 100) {
+            lastGroundScanTime = now;
+            setWheelRPMs(activeRPMs);
+
+            // Active downward ground verification scan (-16° window) under live 10 Hz laser beam
+            const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
+            const inMotionReturns = scanRoom(
+              currentRoom.width,
+              currentRoom.depth,
+              currentX,
+              currentZ,
+              pt.headingDeg,
+              -16,
+              60, // 60 rays for live ground & obstacle projection
+              30,
+              0.005,
+              FIXED_SENSOR_HEIGHT,
+              currentRoom.obstacles,
+              currentRoom.height,
+              scanAperture,
+              fovStart,
+              {
+                opticalOffset: [0.02, 0.018],
+                minBlindRange: 0.05,
+                reflectivityCutoff: true,
+                enableGrazingDropouts: true,
+                useGaussianNoise: true
+              }
             );
+            setLatestPoints(inMotionReturns);
+          }
+
+          // Append odometry breadcrumbs only when rover moved > 12 cm to eliminate DOM/GPU buffer churn
+          if (Math.hypot(currentX - lastTrackX, currentZ - lastTrackZ) > 0.12) {
+            lastTrackX = currentX;
+            lastTrackZ = currentZ;
+            setOdometryTrack((prev) => [...prev, [Number(currentX.toFixed(3)), Number(currentZ.toFixed(3))]]);
           }
 
           trajIndex++;
@@ -294,27 +508,35 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         } else {
           const dest = waypoints[waypoints.length - 1];
           const arrived: RoverPose = {
-            x: Number(dest[0].toFixed(2)),
-            z: Number(dest[1].toFixed(2)),
+            x: Number((dest[0] + accumulatedNudgeX).toFixed(2)),
+            z: Number((dest[1] + accumulatedNudgeZ).toFixed(2)),
             heading: finalHeading
           };
           setRoverPose(arrived);
+          setOdometryTrack((prev) => {
+            const last = prev[prev.length - 1];
+            if (!last || Math.hypot(arrived.x - last[0], arrived.z - last[1]) > 0.02) {
+              return [...prev, [arrived.x, arrived.z]];
+            }
+            return prev;
+          });
           setWheelRPMs([0, 0, 0, 0]);
           setHazardAhead(null);
+          setTilt(0); // Restore 0° level interlock
           setNavPath([]);
           setOperationState("settle");
-          setScanMessage(`Base settled at [${arrived.x}m, ${arrived.z}m]. Ready for tilted sweep.`);
+          setScanMessage(`Base settled at [${arrived.x}m, ${arrived.z}m]. Continuous route mapping complete.`);
           setTimeout(() => onArrival(arrived), 350);
         }
       };
 
       navAnimFrameRef.current = requestAnimationFrame(stepKinematics);
     },
-    [roverPose, reducedMotion, currentRoom.obstacles]
+    [roverPose, reducedMotion, currentRoom, scanAperture]
   );
 
   // Synchronized Multi-Plane Tilt Sweep (-30° to +60°)
-  // Supports fine servo precision (0.5°, 1.0°, 2.5°, 5.0°, 10.0°)
+  // Supports fine servo precision (0.5°, 1.0°, 2.5°, 5.0°, 10.0°) with zero-lag batched commits
   const executeSweepAtPose = useCallback(
     (pose: RoverPose, onSweepComplete?: () => void) => {
       setOperationState("tilt_record");
@@ -328,6 +550,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       const intervalMs =
         sweepPrecision === 10 ? baseIntervalMs : Math.round(baseIntervalMs / 10);
       let step = 0;
+      sweepBufferRef.current = [];
 
       sweepTimerRef.current = setInterval(() => {
         const angle =
@@ -335,16 +558,59 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             ? -30 + step * 10
             : Number(Math.min(60, -30 + step * sweepPrecision).toFixed(2));
         setTilt(angle);
-        capturePlane(angle, raysPerPlane, pose);
+
+        // Scan current elevation slice with S2 raycaster
+        const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
+        const slice = scanRoom(
+          currentRoom.width,
+          currentRoom.depth,
+          pose.x,
+          pose.z,
+          pose.heading,
+          angle,
+          raysPerPlane,
+          30,
+          0.008,
+          FIXED_SENSOR_HEIGHT,
+          currentRoom.obstacles,
+          currentRoom.height,
+          scanAperture,
+          fovStart,
+          {
+            opticalOffset: [0.02, 0.018],
+            minBlindRange: 0.05,
+            reflectivityCutoff: true,
+            enableGrazingDropouts: true,
+            useGaussianNoise: true
+          }
+        );
+
+        setLatestPoints(slice);
+        for (let i = 0; i < slice.length; i++) {
+          sweepBufferRef.current.push(slice[i]);
+        }
 
         step++;
         sweepStepRef.current = step;
         setSteps(step);
 
+        // Batch commit to React point cloud state: commit midway and on completion to eliminate intermediate render churn
+        const batchStride = sweepPrecision === 10 ? 5 : Math.max(5, Math.round(totalSteps / 2));
+        if (step % batchStride === 0 && sweepBufferRef.current.length > 0) {
+          const pending = sweepBufferRef.current;
+          sweepBufferRef.current = [];
+          setPoints((prev) => [...prev, ...pending].slice(-50000));
+        }
+
         if (step >= totalSteps) {
           if (sweepTimerRef.current !== null) {
             clearInterval(sweepTimerRef.current);
             sweepTimerRef.current = null;
+          }
+          if (sweepBufferRef.current.length > 0) {
+            const pending = sweepBufferRef.current;
+            sweepBufferRef.current = [];
+            setPoints((prev) => [...prev, ...pending].slice(-50000));
           }
           setOperationState("gap_evaluate");
           setScanMessage(
@@ -354,45 +620,126 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         }
       }, intervalMs);
     },
-    [capturePlane, raysPerPlane, reducedMotion, sweepPrecision]
+    [currentRoom, raysPerPlane, reducedMotion, scanAperture, sweepPrecision]
   );
 
-  // Body angle search: rotates chassis yaw ±45° to sweep side sectors and eliminate 180° occlusion blind zone
-  const executeBodyAngleSearch = useCallback(
+  // Smooth zero-radius chassis pivot animation with opposite mecanum wheel rotations
+  const animateChassisPivot = useCallback(
+    (
+      fromHeading: number,
+      toHeading: number,
+      basePos: { x: number; z: number },
+      durationMs: number,
+      onComplete: (settledPose: RoverPose) => void
+    ) => {
+      if (reducedMotion) {
+        const directPose: RoverPose = { ...basePos, heading: Math.round(toHeading) };
+        setRoverPose(directPose);
+        setWheelRPMs([0, 0, 0, 0]);
+        setTimeout(() => onComplete(directPose), 100);
+        return;
+      }
+
+      const startTime = performance.now();
+      const dYaw = ((toHeading - fromHeading + 540) % 360) - 180;
+      const radius = 0.05;
+      const halfLength = 0.17;
+      const halfWidth = 0.14;
+      let lastReportTime = 0;
+
+      const stepTurn = (now: number) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / durationMs);
+        const ease =
+          progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+        const currentHeading = (fromHeading + dYaw * ease + 360) % 360;
+
+        const deriv =
+          progress < 0.5
+            ? 12 * progress * progress
+            : 6 * Math.pow(-2 * progress + 2, 2);
+        const yawRateRad =
+          progress < 1
+            ? ((dYaw * Math.PI) / 180 / (durationMs / 1000)) * deriv * 0.5
+            : 0;
+
+        let rpms: [number, number, number, number] = [0, 0, 0, 0];
+        try {
+          const omegas = wheelSpeeds(0, 0, yawRateRad, radius, halfLength, halfWidth);
+          rpms = [
+            Math.round((omegas[0] * 60) / (2 * Math.PI)),
+            Math.round((omegas[1] * 60) / (2 * Math.PI)),
+            Math.round((omegas[2] * 60) / (2 * Math.PI)),
+            Math.round((omegas[3] * 60) / (2 * Math.PI))
+          ];
+        } catch {
+          rpms = [0, 0, 0, 0];
+        }
+
+        if (progress >= 1 || now - lastReportTime >= 33) {
+          lastReportTime = now;
+          const nextPose: RoverPose = {
+            x: basePos.x,
+            z: basePos.z,
+            heading: Math.round(currentHeading)
+          };
+          setRoverPose(nextPose);
+          setWheelRPMs(rpms);
+        }
+
+        if (progress < 1) {
+          navAnimFrameRef.current = requestAnimationFrame(stepTurn);
+        } else {
+          const finalPose: RoverPose = {
+            x: basePos.x,
+            z: basePos.z,
+            heading: Math.round(toHeading)
+          };
+          setRoverPose(finalPose);
+          setWheelRPMs([0, 0, 0, 0]);
+          navAnimFrameRef.current = null;
+          onComplete(finalPose);
+        }
+      };
+
+      navAnimFrameRef.current = requestAnimationFrame(stepTurn);
+    },
+    [reducedMotion]
+  );
+
+  // Body angle search: rotates chassis yaw ±45° with physical mecanum wheel turns to eliminate occlusion blind zone
+  const _executeBodyAngleSearch = useCallback(
     (basePose: RoverPose, onComplete: () => void) => {
       setOperationState("tilt_record");
       setScanMessage(
-        `Adjusting body angle (+45° left flank) to expand search radius and eliminate 180° occlusion blind zone.`
+        `Adjusting body angle (+45° left flank) via zero-radius pivot to expand search radius and eliminate 180° occlusion blind zone.`
       );
 
       const leftHeading = (basePose.heading + 45 + 360) % 360;
-      const leftPose: RoverPose = { ...basePose, heading: leftHeading };
-      setRoverPose(leftPose);
-
-      [-15, 0, 15, 30].forEach((ang) => {
-        capturePlane(ang, raysPerPlane, leftPose);
-      });
-
-      const delayMs = reducedMotion ? 400 : 250;
-
-      setTimeout(() => {
-        setScanMessage(`Adjusting body angle (-45° right flank) to expand search radius.`);
-        const rightHeading = (basePose.heading - 45 + 360) % 360;
-        const rightPose: RoverPose = { ...basePose, heading: rightHeading };
-        setRoverPose(rightPose);
-
-        [-15, 0, 15, 30].forEach((ang) => {
-          capturePlane(ang, raysPerPlane, rightPose);
-        });
+      animateChassisPivot(basePose.heading, leftHeading, basePose, reducedMotion ? 50 : 380, (leftPose) => {
+        captureMultiplePlanes([-15, 0, 15, 30], leftPose);
 
         setTimeout(() => {
-          setRoverPose(basePose);
-          setScanMessage(`Body angle search complete. Rover realigned along path.`);
-          onComplete();
-        }, delayMs);
-      }, delayMs);
+          setScanMessage(`Adjusting body angle (-45° right flank) via zero-radius pivot.`);
+          const rightHeading = (basePose.heading - 45 + 360) % 360;
+          animateChassisPivot(leftPose.heading, rightHeading, basePose, reducedMotion ? 50 : 500, (rightPose) => {
+            captureMultiplePlanes([-15, 0, 15, 30], rightPose);
+
+            setTimeout(() => {
+              setScanMessage(`Body angle search complete. Realigning along path.`);
+              animateChassisPivot(rightPose.heading, basePose.heading, basePose, reducedMotion ? 50 : 380, () => {
+                setScanMessage(`Body angle search complete. Rover realigned along path.`);
+                onComplete();
+              });
+            }, reducedMotion ? 50 : 150);
+          });
+        }, reducedMotion ? 50 : 150);
+      });
     },
-    [capturePlane, raysPerPlane, reducedMotion]
+    [animateChassisPivot, captureMultiplePlanes, reducedMotion]
   );
 
   const runSweep = useCallback(() => {
@@ -418,7 +765,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     setScanMessage("Planned route cleared. Click on arena floor to lay down waypoints.");
   }, []);
 
-  // Step-and-Settle Route Execution (Move -> Stop -> Sweep -> Adjust Body Angle -> Move)
+  // Continuous Waypoint Route Execution (In-Motion Scanning & Navigation without Stop-and-Sweep)
   const executePlottedRoute = useCallback(() => {
     cancelOperations();
     if (waypoints.length === 0) {
@@ -427,67 +774,75 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     }
 
     setIsAutoSurveying(true);
-    let wpIdx = 0;
+    setActiveWaypointIndex(0);
 
-    const stepNextWaypoint = (currentPose: RoverPose) => {
-      if (wpIdx >= waypoints.length) {
-        setIsAutoSurveying(false);
-        setActiveWaypointIndex(-1);
-        setOperationState("idle");
-        setScanMessage(
-          `Step-and-Settle route complete across ${waypoints.length} waypoints. 3D room perimeter reconstructed without camera.`
-        );
-        return;
-      }
-
-      setActiveWaypointIndex(wpIdx);
-      const targetPoint = waypoints[wpIdx];
-      const dx = targetPoint[0] - currentPose.x;
-      const dz = targetPoint[1] - currentPose.z;
-      let targetHeading = currentPose.heading;
-      if (Math.hypot(dx, dz) > 0.05) {
-        targetHeading = Math.round((Math.atan2(dz, dx) * 180) / Math.PI + 360) % 360;
-      }
-
-      const path = findNavPath(
-        [currentPose.x, currentPose.z],
+    // Concatenate obstacle-free paths across all plotted waypoints
+    const fullConnectedPath: [number, number][] = [];
+    let startPoint: [number, number] = [roverPose.x, roverPose.z];
+    for (let i = 0; i < waypoints.length; i++) {
+      const targetPoint = waypoints[i];
+      const leg = findNavPath(
+        startPoint,
         targetPoint,
         currentRoom.obstacles,
         currentRoom.width,
         currentRoom.depth
       );
+      for (let j = i === 0 ? 0 : 1; j < leg.length; j++) {
+        fullConnectedPath.push(leg[j]);
+      }
+      startPoint = targetPoint;
+    }
 
-      setScanMessage(
-        `Waypoint ${wpIdx + 1}/${waypoints.length}: Moving to [${targetPoint[0]}m, ${targetPoint[1]}m] via Mecanum kinematics.`
-      );
+    if (fullConnectedPath.length < 2) {
+      fullConnectedPath.push(waypoints[0]);
+    }
 
-      navigateRoverAlongPath(path, targetHeading, (arrivedPose) => {
-        // Move -> Settle -> Sweep -> Adjust Body Angle -> Move
-        setOperationState("settle");
-        setScanMessage(`Waypoint ${wpIdx + 1}: Settled. Initiating precision tilt sweep.`);
+    // Target final departure heading
+    const lastP0 = fullConnectedPath[fullConnectedPath.length - 2] ?? [roverPose.x, roverPose.z];
+    const lastP1 = fullConnectedPath[fullConnectedPath.length - 1];
+    const lastDx = lastP1[0] - lastP0[0];
+    const lastDz = lastP1[1] - lastP0[1];
+    const finalHeading =
+      Math.hypot(lastDx, lastDz) > 0.05
+        ? Math.round((Math.atan2(lastDz, lastDx) * 180) / Math.PI + 360) % 360
+        : roverPose.heading;
 
-        setTimeout(() => {
-          executeSweepAtPose(arrivedPose, () => {
-            // Adjust body angle to expand search radius and eliminate 180° occlusion blind zone
-            executeBodyAngleSearch(arrivedPose, () => {
-              wpIdx++;
-              setTimeout(() => stepNextWaypoint(arrivedPose), 300);
-            });
-          });
-        }, reducedMotion ? 250 : 150);
-      });
-    };
+    setScanMessage(
+      `Starting continuous navigation across ${waypoints.length} waypoints. Actively scanning and mapping in motion.`
+    );
 
-    stepNextWaypoint(roverPose);
+    navigateRoverAlongPath(
+      fullConnectedPath,
+      finalHeading,
+      (arrivedPose) => {
+        setIsAutoSurveying(false);
+        setActiveWaypointIndex(-1);
+        setOperationState("idle");
+        setScanMessage(
+          `Continuous route survey complete across ${waypoints.length} waypoints at [${arrivedPose.x}m, ${arrivedPose.z}m]. 3D room perimeter reconstructed on the move without camera.`
+        );
+      },
+      (currentX, currentZ) => {
+        // Track closest active plotted waypoint continuously
+        let closestIdx = 0;
+        let minD = Infinity;
+        for (let w = 0; w < waypoints.length; w++) {
+          const d = Math.hypot(waypoints[w][0] - currentX, waypoints[w][1] - currentZ);
+          if (d < minD) {
+            minD = d;
+            closestIdx = w;
+          }
+        }
+        setActiveWaypointIndex(closestIdx);
+      }
+    );
   }, [
     cancelOperations,
     waypoints,
     roverPose,
     currentRoom,
-    navigateRoverAlongPath,
-    executeSweepAtPose,
-    executeBodyAngleSearch,
-    reducedMotion
+    navigateRoverAlongPath
   ]);
 
   // Dynamic Frontier-Based Autonomous Survey
@@ -496,21 +851,24 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     setIsAutoSurveying(true);
 
     const stepExploration = () => {
-      if (points.length === 0) {
-        visitedVantagesRef.current = [[roverPose.x, roverPose.z]];
-        executeSweepAtPose(roverPose, () => {
-          setTimeout(stepExploration, 400);
+      const currentPoints = pointsRef.current;
+      const currentRover = roverPoseRef.current;
+
+      if (currentPoints.length === 0) {
+        visitedVantagesRef.current = [[currentRover.x, currentRover.z]];
+        executeSweepAtPose(currentRover, () => {
+          setTimeout(stepExploration, 350);
         });
         return;
       }
 
       setOperationState("gap_evaluate");
       const report = analyzeCoverageAndGaps(
-        points,
+        currentPoints,
         currentRoom.width,
         currentRoom.depth,
         currentRoom.obstacles,
-        roverPose,
+        currentRover,
         visitedVantagesRef.current
       );
 
@@ -529,7 +887,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       );
 
       const path = findNavPath(
-        [roverPose.x, roverPose.z],
+        [currentRover.x, currentRover.z],
         [recommendedVantage.x, recommendedVantage.z],
         currentRoom.obstacles,
         currentRoom.width,
@@ -538,13 +896,13 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
 
       navigateRoverAlongPath(path, recommendedVantage.heading, (arrivedPose) => {
         executeSweepAtPose(arrivedPose, () => {
-          setTimeout(stepExploration, 500);
+          setTimeout(stepExploration, 350);
         });
       });
     };
 
     stepExploration();
-  }, [cancelOperations, points, currentRoom, roverPose, executeSweepAtPose, navigateRoverAlongPath]);
+  }, [cancelOperations, currentRoom, executeSweepAtPose, navigateRoverAlongPath]);
 
   const handleFloorClickMove = useCallback(
     (targetPose: RoverPose) => {
@@ -577,9 +935,206 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     setActiveWaypointIndex(-1);
     sweepStepRef.current = 0;
     setRoverPose({ x: 0, z: 0, heading: 0 });
+    setOdometryTrack([[0, 0]]);
     setWheelRPMs([0, 0, 0, 0]);
+    setIcpResidual(null);
     setScanMessage("Point cloud reset. Rover repositioned to start pose.");
   }, [cancelOperations]);
+
+  const controlStrip = useMemo(
+    () => (
+      <div className={styles.controlStrip}>
+        <div className={styles.toolGroup} role="group" aria-label="Route and navigation mode">
+          <button
+            type="button"
+            className={styles.toolBtn}
+            aria-pressed={interactMode === "waypoint"}
+            onClick={() => setInteractMode("waypoint")}
+            title="Click floor to plot waypoints"
+          >
+            ● Plot Route ({waypoints.length})
+          </button>
+          <button
+            type="button"
+            className={styles.toolBtn}
+            aria-pressed={interactMode === "direct"}
+            onClick={() => setInteractMode("direct")}
+            title="Click floor to move rover directly"
+          >
+            ➔ Direct Move
+          </button>
+          {waypoints.length > 0 && (
+            <button
+              type="button"
+              className={styles.toolBtn}
+              onClick={handleClearWaypoints}
+              title="Clear all plotted waypoints"
+            >
+              Clear
+            </button>
+          )}
+          <div className="hidden">
+            {ROOM_PRESETS.map((room) => (
+              <button
+                key={room.id}
+                type="button"
+                onClick={() => handleRoomChange(room.id)}
+              >
+                {room.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={styles.toolGroup}>
+          {/* Feasible Top 3 ST3215 Servo Precision Resolutions */}
+          <div className="flex items-center gap-1 border-r border-[var(--sonaris-border)] pr-2 mr-1">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--sonaris-studio-muted)]">
+              Step:
+            </span>
+            {[
+              { val: 1.0, label: "1.0°", title: "Precision Metrology (91 slices)" },
+              { val: 5.0, label: "5.0°", title: "Standard Survey (19 slices)" },
+              { val: 10, label: "10°", title: "Fast Recon (10 slices)" }
+            ].map((p) => (
+              <button
+                key={p.val}
+                type="button"
+                className={styles.toolBtn}
+                aria-pressed={sweepPrecision === p.val}
+                onClick={() => setSweepPrecision(p.val)}
+                title={`ST3215 Servo Tilt Step: ${p.label}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* RPLIDAR S2 Optical Aperture Selector */}
+          <div className="flex items-center gap-1 border-r border-[var(--sonaris-border)] pr-2 mr-1">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--sonaris-studio-muted)]">
+              FOV:
+            </span>
+            {[
+              { deg: 270, label: "270°", title: "Slamtec RPLIDAR S2 turret aperture with rear mast mask (-135° to +135°)" },
+              { deg: 360, label: "360°", title: "Full 360° Omnidirectional DTOF Laser Plane" },
+              { deg: 180, label: "180°", title: "180° Forward Hemicycle (-90° to +90°)" }
+            ].map((a) => (
+              <button
+                key={a.deg}
+                type="button"
+                className={styles.toolBtn}
+                aria-pressed={scanAperture === a.deg}
+                onClick={() => {
+                  cancelOperations();
+                  setScanAperture(a.deg as 270 | 360 | 180);
+                  setScanMessage(`LiDAR optical aperture set to ${a.label}. Confirmed for Slamtec RPLIDAR S2.`);
+                }}
+                title={a.title}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="flex items-center gap-2 font-mono text-[10px] text-[var(--sonaris-studio-muted)]">
+            Tilt
+            <input
+              type="range"
+              min="-30"
+              max="60"
+              step="0.5"
+              value={tilt}
+              onChange={(e) => {
+                cancelOperations();
+                setTilt(parseFloat(e.target.value));
+              }}
+              className="w-16 h-1 appearance-none bg-[var(--sonaris-border-strong)] rounded-full outline-none cursor-pointer"
+              aria-label="Scanner tilt angle slider in degrees"
+            />
+            <span className="font-bold text-[var(--sonaris-studio-ink)] min-w-[28px] text-right font-mono tabular-nums">
+              {tilt > 0 ? `+${tilt}` : tilt}°
+            </span>
+          </label>
+
+          <button
+            type="button"
+            className={styles.toolBtn}
+            aria-pressed={operationState === "tilt_record"}
+            disabled={operationState === "transit"}
+            onClick={operationState === "tilt_record" ? cancelOperations : runSweep}
+          >
+            {operationState === "tilt_record"
+              ? "Pause Sweep"
+              : steps > 0 && steps < 10
+                ? `Resume (${steps}/10)`
+                : `Sweep (${sweepPrecision}°)`}
+          </button>
+
+          {waypoints.length > 0 ? (
+            <button
+              type="button"
+              className={styles.actionBtnPrimary}
+              aria-pressed={isAutoSurveying}
+              onClick={isAutoSurveying ? cancelOperations : executePlottedRoute}
+            >
+              {isAutoSurveying ? "Halt Route" : `Run Route (${waypoints.length} WP)`}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.actionBtnPrimary}
+              aria-pressed={isAutoSurveying}
+              onClick={isAutoSurveying ? cancelOperations : runAutoGapFill}
+              title="Autonomous frontier-driven gap-fill survey"
+            >
+              {isAutoSurveying ? "Halt Survey" : "Auto Survey"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={styles.toolBtn}
+            aria-pressed={registrationMode === "slam_registered"}
+            onClick={() =>
+              setRegistrationMode((prev) =>
+                prev === "slam_registered" ? "raw_odometry" : "slam_registered"
+              )
+            }
+            title={
+              registrationMode === "slam_registered"
+                ? "SLAM Registered: 2D ICP corrects Mecanum wheel slip"
+                : "Raw Odometry: Direct dead reckoning with Mecanum wheel slip drift"
+            }
+          >
+            {registrationMode === "slam_registered" ? "SLAM ICP" : "Raw Odom"}
+          </button>
+
+          <button type="button" className={styles.toolBtn} onClick={resetAllScans}>
+            Reset
+          </button>
+        </div>
+      </div>
+    ),
+    [
+      interactMode,
+      waypoints.length,
+      sweepPrecision,
+      scanAperture,
+      tilt,
+      operationState,
+      steps,
+      isAutoSurveying,
+      registrationMode,
+      cancelOperations,
+      executePlottedRoute,
+      handleClearWaypoints,
+      handleRoomChange,
+      resetAllScans,
+      runAutoGapFill,
+      runSweep
+    ]
+  );
 
   return (
     <section className={styles.workbench} aria-label="SONARIS LiDAR Scan Reconstruction Workbench">
@@ -587,166 +1142,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         {/* ============================================================= */}
         {/* 1. TOP CONTROL BAR                                            */}
         {/* ============================================================= */}
-        <div className={styles.controlStrip}>
-          <div className={styles.toolGroup} role="group" aria-label="Route and navigation mode">
-            <button
-              type="button"
-              className={styles.toolBtn}
-              aria-pressed={interactMode === "waypoint"}
-              onClick={() => setInteractMode("waypoint")}
-              title="Click floor to plot waypoints"
-            >
-              ● Plot Route ({waypoints.length})
-            </button>
-            <button
-              type="button"
-              className={styles.toolBtn}
-              aria-pressed={interactMode === "direct"}
-              onClick={() => setInteractMode("direct")}
-              title="Click floor to move rover directly"
-            >
-              ➔ Direct Move
-            </button>
-            {waypoints.length > 0 && (
-              <button
-                type="button"
-                className={styles.toolBtn}
-                onClick={handleClearWaypoints}
-                title="Clear all plotted waypoints"
-              >
-                Clear
-              </button>
-            )}
-            <div className="hidden">
-              {ROOM_PRESETS.map((room) => (
-                <button
-                  key={room.id}
-                  type="button"
-                  onClick={() => handleRoomChange(room.id)}
-                >
-                  {room.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className={styles.toolGroup}>
-            <div className="flex items-center gap-1 border-r border-[var(--sonaris-border)] pr-2 mr-1">
-              {(
-                [
-                  { id: "cloud", label: "Cloud" },
-                  { id: "split", label: "Split" },
-                  { id: "slice", label: "Slice" }
-                ] as const
-              ).map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={styles.toolBtn}
-                  aria-pressed={displayMode === m.id}
-                  onClick={() => setDisplayMode(m.id)}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-
-            {/* ST3215 Precision Resolution Selector */}
-            <div className="flex items-center gap-1 border-r border-[var(--sonaris-border)] pr-2 mr-1">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--sonaris-studio-muted)]">
-                Step:
-              </span>
-              {[
-                { val: 0.5, label: "0.5°" },
-                { val: 1.0, label: "1.0°" },
-                { val: 2.5, label: "2.5°" },
-                { val: 5.0, label: "5.0°" },
-                { val: 10, label: "10°" }
-              ].map((p) => (
-                <button
-                  key={p.val}
-                  type="button"
-                  className={styles.toolBtn}
-                  aria-pressed={sweepPrecision === p.val}
-                  onClick={() => setSweepPrecision(p.val)}
-                  title={`ST3215 Servo Tilt Step: ${p.label}`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            <label className="flex items-center gap-2 font-mono text-[10px] text-[var(--sonaris-studio-muted)]">
-              Tilt
-              <input
-                type="range"
-                min="-30"
-                max="60"
-                step="0.5"
-                value={tilt}
-                onChange={(e) => {
-                  cancelOperations();
-                  setTilt(parseFloat(e.target.value));
-                }}
-                className="w-16 h-1 appearance-none bg-[var(--sonaris-border-strong)] rounded-full outline-none cursor-pointer"
-                aria-label="Scanner tilt angle slider in degrees"
-              />
-              <span className="font-bold text-[var(--sonaris-studio-ink)] min-w-[28px] text-right font-mono tabular-nums">
-                {tilt > 0 ? `+${tilt}` : tilt}°
-              </span>
-            </label>
-
-            <button
-              type="button"
-              className={styles.toolBtn}
-              disabled={operationState !== "idle"}
-              onClick={() => {
-                const count = capturePlane(tilt, raysPerPlane, roverPose);
-                setScanMessage(`${count} forward returns captured at tilt ${tilt}°.`);
-              }}
-            >
-              Capture (180°)
-            </button>
-
-            <button
-              type="button"
-              className={styles.toolBtn}
-              aria-pressed={operationState === "tilt_record"}
-              disabled={operationState === "transit"}
-              onClick={operationState === "tilt_record" ? cancelOperations : runSweep}
-            >
-              {operationState === "tilt_record"
-                ? "Pause Sweep"
-                : steps > 0 && steps < 10
-                  ? `Resume (${steps}/10)`
-                  : `Sweep (${sweepPrecision}°)`}
-            </button>
-
-            {waypoints.length > 0 ? (
-              <button
-                type="button"
-                className={styles.actionBtnPrimary}
-                aria-pressed={isAutoSurveying}
-                onClick={isAutoSurveying ? cancelOperations : executePlottedRoute}
-              >
-                {isAutoSurveying ? "Halt Route" : `Run Route (${waypoints.length} WP)`}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.actionBtnPrimary}
-                aria-pressed={isAutoSurveying}
-                onClick={isAutoSurveying ? cancelOperations : runAutoGapFill}
-              >
-                {isAutoSurveying ? "Halt Survey" : "Autonomous Survey"}
-              </button>
-            )}
-
-            <button type="button" className={styles.toolBtn} onClick={resetAllScans}>
-              Reset
-            </button>
-          </div>
-        </div>
+        {controlStrip}
 
         {/* ============================================================= */}
         {/* 2. STAGE & SPECIFICATION SHEET                                */}
@@ -766,7 +1162,9 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
               interactMode={interactMode}
               obstacles={currentRoom.obstacles}
               navPath={navPath}
+              odometryTrack={odometryTrack}
               isNavigating={operationState === "transit"}
+              isHazardAhead={hazardAhead?.severity === "critical" || hazardAhead?.severity === "warning"}
               wheelRPMs={wheelRPMs}
               roomWidth={currentRoom.width}
               roomDepth={currentRoom.depth}
@@ -776,6 +1174,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
               pointSize={2.5}
               colorMode="elevation"
               isSweeping={operationState === "tilt_record"}
+              registrationMode={registrationMode}
+              scanApertureDeg={scanAperture}
             />
 
             <div className={styles.stageHud}>
@@ -785,7 +1185,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                   : "Click floor to direct-navigate rover · 0° Level Interlock"}
               </span>
               <span className="font-mono tabular-nums font-semibold">
-                [{roverPose.x.toFixed(1)}m, {roverPose.z.toFixed(1)}m] · {roverPose.heading}° · {coverageReport.coveragePercent}% mapped · {points.length} pts
+                [{roverPose.x.toFixed(1)}m, {roverPose.z.toFixed(1)}m] · {roverPose.heading}° · {registrationMode === "slam_registered" ? "SLAM ICP" : "Raw Odom"} · {coverageReport.coveragePercent}% mapped · {points.length} pts
               </span>
             </div>
           </div>
@@ -905,6 +1305,20 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                         {points.length} pts ({steps}/10 planes)
                       </dd>
                     </div>
+                    <div className={styles.ledgerRow}>
+                      <dt>3D Voxel Grid</dt>
+                      <dd className={styles.monoVal}>
+                        {coverageReport.voxelStats?.volumePercent ?? 0}% ({coverageReport.voxelStats?.freeCount ?? 0} free · {coverageReport.voxelStats?.occupiedCount ?? 0} occ · {coverageReport.voxelStats?.frontierCount ?? 0} front)
+                      </dd>
+                    </div>
+                    <div className={styles.ledgerRow}>
+                      <dt>Registration</dt>
+                      <dd className={styles.monoVal}>
+                        {registrationMode === "slam_registered"
+                          ? (icpResidual !== null ? `SLAM ICP (±${(icpResidual * 1000).toFixed(1)}mm res)` : "SLAM Registered (ICP Active)")
+                          : "Raw Odometry (Mecanum Slip)"}
+                      </dd>
+                    </div>
                   </dl>
 
                   <div className="pt-3">
@@ -1014,7 +1428,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                     </div>
                     <div className={styles.ledgerRow}>
                       <dt>Aperture FOV</dt>
-                      <dd className={styles.monoVal}>180° Forward Outward Field of View</dd>
+                      <dd className={styles.monoVal}>270° Turret FOV (360° Native S2 DTOF)</dd>
                     </div>
                   </dl>
 

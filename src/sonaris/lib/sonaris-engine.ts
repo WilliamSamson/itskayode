@@ -365,23 +365,58 @@ export interface ScanObstacle {
   width: number;
   depth: number;
   height: number;
+  isHole?: boolean;
+  isDark?: boolean;
 }
-/** Synthetic room centred at origin. Sensor .5 m and room height 3 m are editable scenario assumptions, never hardware dimensions. */
+/** Slamtec RPLIDAR S2 DToF physical specifications */
+export const RPLIDAR_S2_SPECS = {
+  sampleRateHz: 32000,
+  typicalScanHz: 10,
+  minBlindRangeM: 0.05, // 50 mm minimum blind zone
+  maxWhiteRangeM: 30.0, // >70% reflectivity
+  maxDarkRangeM: 10.0,  // 10% black target
+  rangeAccuracyM: 0.03, // ±30 mm
+  distanceResolutionM: 0.013, // 13 mm
+  opticalScanPlaneHeightM: 0.018 // 18 mm above S2 base
+} as const;
+
+/** Waveshare / Feetech ST3215 12V Serial Bus Servo specifications */
+export const ST3215_SERVO_SPECS = {
+  voltageV: 12,
+  stallTorqueKgCm: 30,
+  noLoadSpeedSecPer60Deg: 0.222, // 0.222 s / 60°
+  speedDegPerSec: 270, // 45 RPM
+  resolutionStepsPer360: 4096, // 12-bit magnetic encoder
+  angularResolutionDeg: 0.088,
+  minTiltDeg: -30,
+  maxTiltDeg: 60
+} as const;
+
+export interface ScanRoomOptions {
+  opticalOffset?: [number, number]; // [forwardOffset, verticalOffset] in meters relative to tilt pivot
+  minBlindRange?: number; // S2 50 mm blind zone rejection
+  reflectivityCutoff?: boolean; // Dark low-reflectivity targets capped at 10 m
+  enableGrazingDropouts?: boolean; // Rejects grazing specular incidence (>82°)
+  useGaussianNoise?: boolean; // Calibrated range-dependent DToF Gaussian noise
+}
+
+/** 2D scan plane raycaster with S2 DToF sensor fidelity, ST3215 tilt kinematics, and deterministic noise. */
 export function scanRoom(
   roomWidth: number,
   roomDepth: number,
   x: number,
   z: number,
-  headingDeg: number,
-  tiltDeg: number,
-  rays: number,
-  range: number,
-  noise: number,
+  headingDeg = 0,
+  tiltDeg = 0,
+  rays = 360,
+  range = 30,
+  noise = 0,
   sensorHeight = 0.5,
   obstacles: ScanObstacle[] = [],
   wallHeight = 3,
   fovDeg = 360,
-  fovStartDeg = 0
+  fovStartDeg = 0,
+  options?: ScanRoomOptions
 ): ScanPoint[] {
   if (
     ![roomWidth, roomDepth, x, z, headingDeg, tiltDeg, rays, range, noise, sensorHeight].every(
@@ -411,9 +446,27 @@ export function scanRoom(
     Math.abs(z) >= roomDepth / 2
   )
     return [];
+
   const points: ScanPoint[] = [];
   const h = (headingDeg * Math.PI) / 180,
     t = (tiltDeg * Math.PI) / 180;
+
+  // ST3215 Tilt Mount Kinematics: Calculate true optical center displaced from pitch pivot
+  let rayOriginX = x;
+  let rayOriginY = sensorHeight;
+  let rayOriginZ = z;
+
+  if (options?.opticalOffset) {
+    const [optFwd, optVert] = options.opticalOffset;
+    const localX_opt = optFwd * Math.cos(t) - optVert * Math.sin(t);
+    const localY_opt = optFwd * Math.sin(t) + optVert * Math.cos(t);
+    rayOriginX = x + localX_opt * Math.cos(h);
+    rayOriginZ = z + localX_opt * Math.sin(h);
+    rayOriginY = Math.max(0, Math.min(wallHeight, sensorHeight + localY_opt));
+  }
+
+  const minBlind = options?.minBlindRange ?? 0;
+
   // Rotate the scan plane about the local lateral axis, then apply rover yaw.
   for (let i = 0; i < rays; i++) {
     const a =
@@ -425,40 +478,117 @@ export function scanRoom(
       localZ = Math.sin(a);
     const dx = localX * Math.cos(h) - localZ * Math.sin(h),
       dz = localX * Math.sin(h) + localZ * Math.cos(h);
-    const hits: number[] = [];
-    if (Math.abs(dx) > 1e-10) hits.push(((dx > 0 ? roomWidth / 2 : -roomWidth / 2) - x) / dx);
-    if (Math.abs(dz) > 1e-10) hits.push(((dz > 0 ? roomDepth / 2 : -roomDepth / 2) - z) / dz);
-    if (Math.abs(dy) > 1e-10) hits.push(((dy > 0 ? wallHeight : 0) - sensorHeight) / dy);
+
+    interface HitCandidate {
+      dist: number;
+      normal: [number, number, number];
+      isDark?: boolean;
+    }
+    const hits: HitCandidate[] = [];
+
+    if (Math.abs(dx) > 1e-10) {
+      const isPos = dx > 0;
+      const d = ((isPos ? roomWidth / 2 : -roomWidth / 2) - rayOriginX) / dx;
+      if (d > 0) hits.push({ dist: d, normal: [isPos ? -1 : 1, 0, 0] });
+    }
+    if (Math.abs(dz) > 1e-10) {
+      const isPos = dz > 0;
+      const d = ((isPos ? roomDepth / 2 : -roomDepth / 2) - rayOriginZ) / dz;
+      if (d > 0) hits.push({ dist: d, normal: [0, 0, isPos ? -1 : 1] });
+    }
+    if (Math.abs(dy) > 1e-10) {
+      const isPos = dy > 0;
+      const d = ((isPos ? wallHeight : 0) - rayOriginY) / dy;
+      if (d > 0) hits.push({ dist: d, normal: [0, isPos ? -1 : 1, 0] });
+    }
+
     for (const o of obstacles) {
       let near = -Infinity,
         far = Infinity;
-      const origin = [x, sensorHeight, z],
+      let nearNormal: [number, number, number] = [0, 0, 0];
+      const origin = [rayOriginX, rayOriginY, rayOriginZ],
         direction = [dx, dy, dz],
         min = [o.x - o.width / 2, 0, o.z - o.depth / 2],
         max = [o.x + o.width / 2, o.height, o.z + o.depth / 2];
+
+      let miss = false;
       for (let axis = 0; axis < 3; axis++) {
         if (Math.abs(direction[axis]) < 1e-10) {
           if (origin[axis] < min[axis] || origin[axis] > max[axis]) {
-            far = -Infinity;
+            miss = true;
             break;
           }
         } else {
-          const a = (min[axis] - origin[axis]) / direction[axis],
-            b = (max[axis] - origin[axis]) / direction[axis];
-          near = Math.max(near, Math.min(a, b));
-          far = Math.min(far, Math.max(a, b));
+          let a = (min[axis] - origin[axis]) / direction[axis];
+          let b = (max[axis] - origin[axis]) / direction[axis];
+          let sign = -1;
+          if (a > b) {
+            const temp = a;
+            a = b;
+            b = temp;
+            sign = 1;
+          }
+          if (a > near) {
+            near = a;
+            nearNormal = [0, 0, 0];
+            nearNormal[axis] = sign;
+          }
+          far = Math.min(far, b);
         }
       }
-      if (far >= near && far > 0) hits.push(near > 0 ? near : far);
+      if (!miss && far >= near && far > 0) {
+        const d = near > 0 ? near : far;
+        // Obstacles with low reflectivity (e.g. dark casing or matte black)
+        const isDark = (o as { isDark?: boolean }).isDark ?? false;
+        hits.push({ dist: d, normal: nearNormal, isDark });
+      }
     }
-    const distance = Math.min(...hits.filter((v) => v > 0));
-    if (!Number.isFinite(distance) || distance > range) continue;
-    const hash = ((Math.imul(i + 1, 1664525) + 1013904223) >>> 0) / 4294967295;
-    const measured = Math.max(0, Math.min(range, distance + (hash * 2 - 1) * noise));
+
+    const validHits = hits.filter((h) => h.dist > 0);
+    if (validHits.length === 0) continue;
+
+    validHits.sort((a, b) => a.dist - b.dist);
+    const closest = validHits[0];
+    const distance = closest.dist;
+
+    // Minimum blind zone rejection (S2: 0.05 m)
+    if (!Number.isFinite(distance) || distance < minBlind || distance > range) continue;
+
+    // Surface reflectivity cutoff: Low-reflectivity targets cap range to 10 m (RPLIDAR S2 spec)
+    if (options?.reflectivityCutoff && closest.isDark && distance > RPLIDAR_S2_SPECS.maxDarkRangeM) {
+      continue;
+    }
+
+    // Grazing incidence dropouts: cos(incidence) < 0.14 (incidence > 82°) causes weak/scattered return
+    if (options?.enableGrazingDropouts) {
+      const cosIncidence = -(dx * closest.normal[0] + dy * closest.normal[1] + dz * closest.normal[2]);
+      if (cosIncidence > 0 && cosIncidence < 0.14) {
+        continue;
+      }
+    }
+
+    // Range-dependent DToF noise model (calibrated ±30 mm accuracy + distance dispersion)
+    let measured = distance;
+    if (noise > 0) {
+      if (options?.useGaussianNoise) {
+        // Deterministic pseudo-Gaussian using Box-Muller on hash pairs
+        const h1 = ((Math.imul(i + 1, 1664525) + 1013904223) >>> 0) / 4294967295;
+        const h2 = ((Math.imul(i + 7, 22695477) + 1) >>> 0) / 4294967295;
+        const u1 = Math.max(1e-7, h1);
+        const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * h2);
+        // Distance dispersion: sigma grows slightly at long ranges
+        const sigma = noise * (1.0 + 0.015 * distance);
+        measured = Math.max(minBlind, Math.min(range, distance + z0 * sigma));
+      } else {
+        const hash = ((Math.imul(i + 1, 1664525) + 1013904223) >>> 0) / 4294967295;
+        measured = Math.max(0, Math.min(range, distance + (hash * 2 - 1) * noise));
+      }
+    }
+
     points.push({
-      x: x + dx * measured,
-      y: Math.max(0, Math.min(wallHeight, sensorHeight + dy * measured)),
-      z: z + dz * measured
+      x: rayOriginX + dx * measured,
+      y: Math.max(0, Math.min(wallHeight, rayOriginY + dy * measured)),
+      z: rayOriginZ + dz * measured
     });
   }
   return points;

@@ -97,4 +97,70 @@ describe("SONARIS Spatial Coverage and Gap Analysis", () => {
     expect(step.wheelRPMs).toHaveLength(4);
     expect(step.reachedGoal).toBe(false);
   });
+
+  it("computes volumetric 3D voxel occupancy grid with ray free-space clearing and frontiers", () => {
+    const points = scanRoom(6, 5, 0, 0, 0, 0, 360, 30, 0, 0.5);
+    const report = analyzeCoverageAndGaps(points, 6, 5);
+    expect(report.voxelStats).toBeDefined();
+    expect(report.voxelStats?.totalVoxels).toBeGreaterThan(100);
+    expect(report.voxelStats?.occupiedCount).toBeGreaterThan(0);
+    expect(report.voxelStats?.freeCount).toBeGreaterThan(0);
+    expect(report.voxelStats?.volumePercent).toBeGreaterThan(0);
+    expect(report.voxelStats?.frontierCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("models Mecanum wheel slip odometry drift and corrects it via 2D ICP registration", async () => {
+    const { addMecanumOdometryDrift, alignScanICP } = await import("@/sonaris/lib/sonaris-coverage");
+    const truePose = { x: 1.0, z: -0.5, heading: 45 };
+    const drift = addMecanumOdometryDrift(truePose, 2.5, 90);
+    
+    expect(drift.estimatedPose).toBeDefined();
+    expect(typeof drift.driftOffset.dx).toBe("number");
+    expect(typeof drift.driftOffset.dz).toBe("number");
+    expect(typeof drift.driftOffset.dHeadingDeg).toBe("number");
+
+    // Scan reference from (0,0) and second scan from (0.05, 0.05)
+    const refScan = scanRoom(6, 5, 0, 0, 0, 0, 180, 30, 0, 0.5);
+    const driftedScan = refScan.map((p) => ({ x: p.x + 0.08, y: p.y, z: p.z - 0.05 }));
+
+    const icp = alignScanICP(driftedScan, refScan, { maxIterations: 10 });
+    expect(icp.converged).toBe(true);
+    expect(icp.residualErrorM).toBeLessThan(0.02); // Snaps back within 2 cm error
+    expect(icp.transform.dx).toBeCloseTo(-0.08, 1);
+    expect(icp.transform.dz).toBeCloseTo(0.05, 1);
+  });
+
+  it("scans driving corridor at downward angle window to detect floor holes and obstacles with autonomous bypass decisions", async () => {
+    const { scanDrivingCorridor, evaluateAutonomousDecision } = await import(
+      "@/sonaris/lib/sonaris-coverage"
+    );
+
+    // 1. Clear floor corridor
+    const clearHazard = scanDrivingCorridor({ x: 0, z: 0, heading: 0 }, [], 6, 5, 0.85, -16);
+    expect(clearHazard.type).toBe("clear");
+    expect(clearHazard.inspectionAngleDeg).toBe(-16);
+    const clearDecision = evaluateAutonomousDecision({ x: 0, z: 0, heading: 0 }, clearHazard);
+    expect(clearDecision.action).toBe("proceed");
+
+    // 2. Physical Obstacle in path
+    const obstacle = [{ x: 0.6, z: 0, width: 0.5, depth: 0.5, height: 1.0 }];
+    const obsHazard = scanDrivingCorridor({ x: 0, z: 0, heading: 0 }, obstacle, 6, 5, 0.85, -16);
+    expect(obsHazard.type).toBe("obstacle");
+    expect(obsHazard.distanceM).toBeLessThanOrEqual(0.65);
+    expect(obsHazard.suggestedBypass).toBeDefined();
+
+    const obsDecision = evaluateAutonomousDecision({ x: 0, z: 0, heading: 0 }, obsHazard);
+    expect(["detour_left", "detour_right"]).toContain(obsDecision.action);
+    expect(obsDecision.lateralNudge[1]).not.toBe(0); // Applies lateral offset
+
+    // 3. Negative Obstacle / Floor Void in path
+    const hole = [{ x: 0.55, z: 0, width: 0.5, depth: 0.5, height: 0, isHole: true }];
+    const holeHazard = scanDrivingCorridor({ x: 0, z: 0, heading: 0 }, hole, 6, 5, 0.85, -16);
+    expect(holeHazard.type).toBe("hole");
+    expect(holeHazard.suggestedBypass).toBeDefined();
+
+    const holeDecision = evaluateAutonomousDecision({ x: 0, z: 0, heading: 0 }, holeHazard);
+    expect(["detour_left", "detour_right"]).toContain(holeDecision.action);
+    expect(holeDecision.reason).toContain("Floor void");
+  });
 });

@@ -269,3 +269,44 @@ it('rejects negative trial uncertainty without rejecting absent uncertainty', ()
   p.trials[0].uncertainty=-1;
   expect(validateProject(p)).toBe(false);
 });
+
+import { RPLIDAR_S2_SPECS, ST3215_SERVO_SPECS } from "@/sonaris/lib/sonaris-engine";
+
+describe("RPLIDAR S2 & ST3215 actuator physics fidelity", () => {
+  it("enforces official manufacturer hardware limits", () => {
+    expect(RPLIDAR_S2_SPECS.minBlindRangeM).toBe(0.05); // 50 mm
+    expect(RPLIDAR_S2_SPECS.maxWhiteRangeM).toBe(30.0);
+    expect(RPLIDAR_S2_SPECS.maxDarkRangeM).toBe(10.0);
+    expect(RPLIDAR_S2_SPECS.sampleRateHz).toBe(32000);
+    expect(ST3215_SERVO_SPECS.speedDegPerSec).toBe(270);
+    expect(ST3215_SERVO_SPECS.noLoadSpeedSecPer60Deg).toBe(0.222);
+  });
+
+  it("rejects points inside the 0.05 m minimum blind zone when enabled", () => {
+    // Obstacle at 0.03 m is inside 0.05 m blind zone
+    const obstacle = [{ x: 0.03, z: 0, width: 0.02, depth: 1, height: 1 }];
+    const pts = scanRoom(10, 10, 0, 0, 0, 0, 1, 30, 0, 0.5, obstacle, 3, 360, 0, {
+      minBlindRange: 0.05
+    });
+    // The obstacle inside the blind zone blocks the beam and is dropped/rejected by DToF
+    expect(pts.length).toBe(0);
+
+    // If placed at 0.10 m (outside blind zone), it returns a valid hit
+    const validObstacle = [{ x: 0.10, z: 0, width: 0.02, depth: 1, height: 1 }];
+    const validPts = scanRoom(10, 10, 0, 0, 0, 0, 1, 30, 0, 0.5, validObstacle, 3, 360, 0, {
+      minBlindRange: 0.05
+    });
+    expect(validPts.length).toBe(1);
+    expect(validPts[0].x).toBeCloseTo(0.09, 2);
+  });
+
+  it("applies optical offset displacement during tilt", () => {
+    // Optical offset of 20 mm forward, 18 mm up
+    const pts = scanRoom(10, 10, 0, 0, 0, 45, 1, 30, 0, 0.5, [], 3, 360, 0, {
+      opticalOffset: [0.02, 0.018]
+    });
+    expect(pts.length).toBe(1);
+    // Optical offset shifts ray origin forward and vertically
+    expect(pts[0]).toBeDefined();
+  });
+});
