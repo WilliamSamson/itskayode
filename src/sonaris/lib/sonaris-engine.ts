@@ -358,6 +358,7 @@ export interface ScanPoint {
   x: number;
   y: number;
   z: number;
+  normal?: [number, number, number];
 }
 export interface ScanObstacle {
   x: number;
@@ -365,8 +366,12 @@ export interface ScanObstacle {
   width: number;
   depth: number;
   height: number;
+  baseY?: number;
   isHole?: boolean;
   isDark?: boolean;
+  shape?: "box" | "cylinder" | "ramp";
+  radius?: number;
+  rampDirection?: "posZ" | "negZ" | "posX" | "negX";
 }
 /** Slamtec RPLIDAR S2 DToF physical specifications */
 export const RPLIDAR_S2_SPECS = {
@@ -398,6 +403,7 @@ export interface ScanRoomOptions {
   reflectivityCutoff?: boolean; // Dark low-reflectivity targets capped at 10 m
   enableGrazingDropouts?: boolean; // Rejects grazing specular incidence (>82°)
   useGaussianNoise?: boolean; // Calibrated range-dependent DToF Gaussian noise
+  includeNormals?: boolean;
 }
 
 /** 2D scan plane raycaster with S2 DToF sensor fidelity, ST3215 tilt kinematics, and deterministic noise. */
@@ -499,17 +505,234 @@ export function scanRoom(
     if (Math.abs(dy) > 1e-10) {
       const isPos = dy > 0;
       const d = ((isPos ? wallHeight : 0) - rayOriginY) / dy;
-      if (d > 0) hits.push({ dist: d, normal: [0, isPos ? -1 : 1, 0] });
+      if (d > 0) {
+        if (!isPos) {
+          // Floor check: if ray hits inside a negative floor void / hole, ray drops into pit
+          const hitX = rayOriginX + d * dx;
+          const hitZ = rayOriginZ + d * dz;
+          let insideHoleObstacle: typeof obstacles[0] | null = null;
+          for (const o of obstacles) {
+            if ((o as { isHole?: boolean }).isHole || o.height <= 0) {
+              if (
+                Math.abs(hitX - o.x) <= o.width / 2 &&
+                Math.abs(hitZ - o.z) <= o.depth / 2
+              ) {
+                insideHoleObstacle = o;
+                break;
+              }
+            }
+          }
+          if (insideHoleObstacle) {
+            // Negative floor void: floor at y=0 is absent; ray hits pit bottom at y = -0.25m
+            const pitY = -0.25;
+            const pitD = (pitY - rayOriginY) / dy;
+            if (pitD > 0) {
+              const pitHitX = rayOriginX + pitD * dx;
+              const pitHitZ = rayOriginZ + pitD * dz;
+              if (
+                Math.abs(pitHitX - insideHoleObstacle.x) <= insideHoleObstacle.width / 2 &&
+                Math.abs(pitHitZ - insideHoleObstacle.z) <= insideHoleObstacle.depth / 2
+              ) {
+                hits.push({ dist: pitD, normal: [0, 1, 0] });
+              }
+            }
+          } else {
+            hits.push({ dist: d, normal: [0, 1, 0] });
+          }
+        } else {
+          hits.push({ dist: d, normal: [0, -1, 0] });
+        }
+      }
     }
 
     for (const o of obstacles) {
+      const baseY = o.baseY ?? 0;
+      const isDark = (o as { isDark?: boolean }).isDark ?? false;
+
+      // 1. Curvilinear Cylindrical Columns / Circular Pillars
+      if (o.shape === "cylinder") {
+        const radius = o.radius ?? o.width / 2;
+        const ocx = o.x;
+        const ocz = o.z;
+        const topY = baseY + o.height;
+
+        // Analytical quadratic ray-cylinder intersection in XZ plane
+        const ox = rayOriginX - ocx;
+        const oz = rayOriginZ - ocz;
+        const aCoeff = dx * dx + dz * dz;
+        if (aCoeff > 1e-10) {
+          const bCoeff = 2 * (ox * dx + oz * dz);
+          const cCoeff = ox * ox + oz * oz - radius * radius;
+          const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+          if (disc >= 0) {
+            const sqrtDisc = Math.sqrt(disc);
+            const t0 = (-bCoeff - sqrtDisc) / (2 * aCoeff);
+            const t1 = (-bCoeff + sqrtDisc) / (2 * aCoeff);
+            const tCyl = t0 > 0 ? t0 : t1;
+            if (tCyl > 0) {
+              const hitY = rayOriginY + tCyl * dy;
+              if (hitY >= baseY && hitY <= topY) {
+                const hitX = rayOriginX + tCyl * dx;
+                const hitZ = rayOriginZ + tCyl * dz;
+                const normX = (hitX - ocx) / radius;
+                const normZ = (hitZ - ocz) / radius;
+                hits.push({ dist: tCyl, normal: [normX, 0, normZ], isDark });
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      // 2. Sloped Inclined Ramps / Slanted Terrain Transitions
+      if (o.shape === "ramp") {
+        const dir = o.rampDirection ?? "posZ";
+        const halfW = o.width / 2;
+        const halfD = o.depth / 2;
+        const minZ = o.z - halfD;
+        const maxZ = o.z + halfD;
+        const minX = o.x - halfW;
+        const maxX = o.x + halfW;
+        const hRamp = o.height;
+
+        // Check inclined top face
+        if (dir === "posZ" || dir === "negZ") {
+          const sign = dir === "posZ" ? 1 : -1;
+          const m = hRamp / o.depth;
+          const zRef = dir === "posZ" ? minZ : maxZ;
+          // y - baseY = sign * m * (z - zRef)
+          const denom = dy - sign * m * dz;
+          if (Math.abs(denom) > 1e-10) {
+            const tRamp = (baseY - sign * m * zRef - (rayOriginY - sign * m * rayOriginZ)) / denom;
+            if (tRamp > 0) {
+              const hitX = rayOriginX + tRamp * dx;
+              const hitZ = rayOriginZ + tRamp * dz;
+              if (hitX >= minX && hitX <= maxX && hitZ >= minZ && hitZ <= maxZ) {
+                const normLen = Math.sqrt(1 + m * m);
+                hits.push({
+                  dist: tRamp,
+                  normal: [0, 1 / normLen, (-sign * m) / normLen],
+                  isDark
+                });
+              }
+            }
+          }
+
+          // Back vertical wall at elevated end
+          const zBack = dir === "posZ" ? maxZ : minZ;
+          if (Math.abs(dz) > 1e-10) {
+            const tBack = (zBack - rayOriginZ) / dz;
+            if (tBack > 0) {
+              const hitX = rayOriginX + tBack * dx;
+              const hitY = rayOriginY + tBack * dy;
+              if (hitX >= minX && hitX <= maxX && hitY >= baseY && hitY <= baseY + hRamp) {
+                hits.push({
+                  dist: tBack,
+                  normal: [0, 0, dir === "posZ" ? 1 : -1],
+                  isDark
+                });
+              }
+            }
+          }
+
+          // Triangular side walls (left & right)
+          if (Math.abs(dx) > 1e-10) {
+            for (const xSide of [minX, maxX]) {
+              const tSide = (xSide - rayOriginX) / dx;
+              if (tSide > 0) {
+                const hitZ = rayOriginZ + tSide * dz;
+                const hitY = rayOriginY + tSide * dy;
+                if (hitZ >= minZ && hitZ <= maxZ) {
+                  const yMax =
+                    baseY +
+                    (dir === "posZ"
+                      ? ((hitZ - minZ) / o.depth) * hRamp
+                      : ((maxZ - hitZ) / o.depth) * hRamp);
+                  if (hitY >= baseY && hitY <= yMax) {
+                    hits.push({
+                      dist: tSide,
+                      normal: [xSide === minX ? -1 : 1, 0, 0],
+                      isDark
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          const sign = dir === "posX" ? 1 : -1;
+          const m = hRamp / o.width;
+          const xRef = dir === "posX" ? minX : maxX;
+          const denom = dy - sign * m * dx;
+          if (Math.abs(denom) > 1e-10) {
+            const tRamp = (baseY - sign * m * xRef - (rayOriginY - sign * m * rayOriginX)) / denom;
+            if (tRamp > 0) {
+              const hitX = rayOriginX + tRamp * dx;
+              const hitZ = rayOriginZ + tRamp * dz;
+              if (hitX >= minX && hitX <= maxX && hitZ >= minZ && hitZ <= maxZ) {
+                const normLen = Math.sqrt(1 + m * m);
+                hits.push({
+                  dist: tRamp,
+                  normal: [(-sign * m) / normLen, 1 / normLen, 0],
+                  isDark
+                });
+              }
+            }
+          }
+
+          // Back vertical wall at elevated end
+          const xBack = dir === "posX" ? maxX : minX;
+          if (Math.abs(dx) > 1e-10) {
+            const tBack = (xBack - rayOriginX) / dx;
+            if (tBack > 0) {
+              const hitZ = rayOriginZ + tBack * dz;
+              const hitY = rayOriginY + tBack * dy;
+              if (hitZ >= minZ && hitZ <= maxZ && hitY >= baseY && hitY <= baseY + hRamp) {
+                hits.push({
+                  dist: tBack,
+                  normal: [dir === "posX" ? 1 : -1, 0, 0],
+                  isDark
+                });
+              }
+            }
+          }
+
+          // Triangular side walls (front & back in Z)
+          if (Math.abs(dz) > 1e-10) {
+            for (const zSide of [minZ, maxZ]) {
+              const tSide = (zSide - rayOriginZ) / dz;
+              if (tSide > 0) {
+                const hitX = rayOriginX + tSide * dx;
+                const hitY = rayOriginY + tSide * dy;
+                if (hitX >= minX && hitX <= maxX) {
+                  const yMax =
+                    baseY +
+                    (dir === "posX"
+                      ? ((hitX - minX) / o.width) * hRamp
+                      : ((maxX - hitX) / o.width) * hRamp);
+                  if (hitY >= baseY && hitY <= yMax) {
+                    hits.push({
+                      dist: tSide,
+                      normal: [0, 0, zSide === minZ ? -1 : 1],
+                      isDark
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      // 3. Rectangular Box Envelopes & Partitions
       let near = -Infinity,
         far = Infinity;
       let nearNormal: [number, number, number] = [0, 0, 0];
       const origin = [rayOriginX, rayOriginY, rayOriginZ],
         direction = [dx, dy, dz],
-        min = [o.x - o.width / 2, 0, o.z - o.depth / 2],
-        max = [o.x + o.width / 2, o.height, o.z + o.depth / 2];
+        min = [o.x - o.width / 2, baseY, o.z - o.depth / 2],
+        max = [o.x + o.width / 2, baseY + o.height, o.z + o.depth / 2];
 
       let miss = false;
       for (let axis = 0; axis < 3; axis++) {
@@ -538,8 +761,6 @@ export function scanRoom(
       }
       if (!miss && far >= near && far > 0) {
         const d = near > 0 ? near : far;
-        // Obstacles with low reflectivity (e.g. dark casing or matte black)
-        const isDark = (o as { isDark?: boolean }).isDark ?? false;
         hits.push({ dist: d, normal: nearNormal, isDark });
       }
     }
@@ -585,11 +806,15 @@ export function scanRoom(
       }
     }
 
-    points.push({
+    const pt: ScanPoint = {
       x: rayOriginX + dx * measured,
       y: Math.max(0, Math.min(wallHeight, rayOriginY + dy * measured)),
       z: rayOriginZ + dz * measured
-    });
+    };
+    if (options?.includeNormals) {
+      pt.normal = closest.normal;
+    }
+    points.push(pt);
   }
   return points;
 }

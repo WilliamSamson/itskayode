@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { assemblyParts } from "@/sonaris/lib/sonaris-assembly";
 import type { ScanPoint, ScanObstacle } from "@/sonaris/lib/sonaris-engine";
+import { getRoomAttitudeAt, type RoomEnvironment } from "@/sonaris/lib/sonaris-coverage";
 import { createAssemblyModel } from "./assembly-models";
 
 export interface ProbedPoint {
@@ -32,6 +33,7 @@ export interface ScanStageProps {
   onAddWaypoint?: (point: [number, number]) => void;
   interactMode?: "waypoint" | "direct";
   obstacles?: ScanObstacle[];
+  currentRoom?: RoomEnvironment;
   navPath?: [number, number][];
   odometryTrack?: [number, number][];
   isNavigating?: boolean;
@@ -47,6 +49,7 @@ export interface ScanStageProps {
   isSweeping?: boolean;
   registrationMode?: "slam_registered" | "raw_odometry";
   scanApertureDeg?: number;
+  showGroundTruth?: boolean;
 }
 
 const PLANE_PALETTE = [
@@ -85,6 +88,86 @@ function clearAndDisposeGroup(group: THREE.Group) {
   }
 }
 
+function createRampGeometry(
+  w: number,
+  h: number,
+  d: number,
+  dir: "posX" | "negX" | "posZ" | "negZ" = "posZ"
+): THREE.BufferGeometry {
+  const halfW = w / 2;
+  const halfD = d / 2;
+  let vertices: number[];
+  if (dir === "posZ") {
+    vertices = [
+      // Sloped face
+      -halfW, 0, -halfD,   halfW, 0, -halfD,   halfW, h, halfD,
+      -halfW, 0, -halfD,   halfW, h, halfD,   -halfW, h, halfD,
+      // Back face
+      -halfW, h, halfD,    halfW, h, halfD,    halfW, 0, halfD,
+      -halfW, h, halfD,    halfW, 0, halfD,   -halfW, 0, halfD,
+      // Left triangle
+      -halfW, 0, -halfD,  -halfW, h, halfD,   -halfW, 0, halfD,
+      // Right triangle
+      halfW, 0, -halfD,    halfW, 0, halfD,    halfW, h, halfD,
+      // Bottom face
+      -halfW, 0, -halfD,  -halfW, 0, halfD,    halfW, 0, halfD,
+      -halfW, 0, -halfD,   halfW, 0, halfD,    halfW, 0, -halfD
+    ];
+  } else if (dir === "negZ") {
+    vertices = [
+      // Sloped face
+      halfW, 0, halfD,    -halfW, 0, halfD,   -halfW, h, -halfD,
+      halfW, 0, halfD,    -halfW, h, -halfD,   halfW, h, -halfD,
+      // Back face
+      halfW, h, -halfD,   -halfW, h, -halfD,  -halfW, 0, -halfD,
+      halfW, h, -halfD,   -halfW, 0, -halfD,   halfW, 0, -halfD,
+      // Left triangle
+      -halfW, 0, halfD,   -halfW, h, -halfD,  -halfW, 0, -halfD,
+      // Right triangle
+      halfW, 0, halfD,     halfW, 0, -halfD,   halfW, h, -halfD,
+      // Bottom face
+      -halfW, 0, -halfD,  -halfW, 0, halfD,    halfW, 0, halfD,
+      -halfW, 0, -halfD,   halfW, 0, halfD,    halfW, 0, -halfD
+    ];
+  } else if (dir === "posX") {
+    vertices = [
+      // Sloped face
+      -halfW, 0, halfD,   -halfW, 0, -halfD,   halfW, h, -halfD,
+      -halfW, 0, halfD,    halfW, h, -halfD,   halfW, h, halfD,
+      // Back face
+      halfW, h, halfD,     halfW, h, -halfD,   halfW, 0, -halfD,
+      halfW, h, halfD,     halfW, 0, -halfD,   halfW, 0, halfD,
+      // Front triangle
+      -halfW, 0, halfD,    halfW, 0, halfD,    halfW, h, halfD,
+      // Back triangle
+      -halfW, 0, -halfD,   halfW, h, -halfD,   halfW, 0, -halfD,
+      // Bottom face
+      -halfW, 0, -halfD,  -halfW, 0, halfD,    halfW, 0, halfD,
+      -halfW, 0, -halfD,   halfW, 0, halfD,    halfW, 0, -halfD
+    ];
+  } else {
+    vertices = [
+      // Sloped face
+      halfW, 0, -halfD,    halfW, 0, halfD,   -halfW, h, halfD,
+      halfW, 0, -halfD,   -halfW, h, halfD,   -halfW, h, -halfD,
+      // Back face
+      -halfW, h, halfD,   -halfW, h, -halfD,  -halfW, 0, -halfD,
+      -halfW, h, halfD,   -halfW, 0, -halfD,  -halfW, 0, halfD,
+      // Front triangle
+      halfW, 0, halfD,    -halfW, 0, halfD,   -halfW, h, halfD,
+      // Back triangle
+      halfW, 0, -halfD,   -halfW, 0, -halfD,  -halfW, h, -halfD,
+      // Bottom face
+      -halfW, 0, -halfD,  -halfW, 0, halfD,    halfW, 0, halfD,
+      -halfW, 0, -halfD,   halfW, 0, halfD,    halfW, 0, -halfD
+    ];
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export default function ScanStage({
   points,
   latestPoints,
@@ -97,6 +180,7 @@ export default function ScanStage({
   onAddWaypoint,
   interactMode = "waypoint",
   obstacles = [],
+  currentRoom,
   navPath = [],
   odometryTrack = [],
   isNavigating = false,
@@ -110,7 +194,8 @@ export default function ScanStage({
   colorMode = "elevation",
   isSweeping = false,
   registrationMode = "slam_registered",
-  scanApertureDeg = 270
+  scanApertureDeg = 270,
+  showGroundTruth = false
 }: ScanStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<{
@@ -163,6 +248,8 @@ export default function ScanStage({
   const prevFirstPointRef = useRef<ScanPoint | null>(null);
   const prevColorModeRef = useRef(colorMode);
   const prevRoomHeightRef = useRef(roomHeight);
+  const currentPitchRadRef = useRef(0);
+  const currentRollRadRef = useRef(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -185,15 +272,15 @@ export default function ScanStage({
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.05, 50);
-    camera.position.set(4.8, 4.2, 5.2);
+    const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.05, 60);
+    camera.position.set(6.8, 6.0, 7.4);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 0.5;
-    controls.maxDistance = 25;
-    controls.target.set(0, 0.6, 0);
+    controls.maxDistance = 35;
+    controls.target.set(0, 0.4, 0);
 
     // Subtle lighting
     scene.add(new THREE.AmbientLight(0xffffff, 0.9));
@@ -284,10 +371,10 @@ export default function ScanStage({
 
     const fanGeo = new THREE.RingGeometry(0.06, 3.8, 36, 1, -Math.PI / 2, Math.PI);
     const fanMat = new THREE.MeshBasicMaterial({
-      color: 0x991f1f,
+      color: 0xff2222,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.38,
       depthWrite: false
     });
     const fanMesh = new THREE.Mesh(fanGeo, fanMat);
@@ -303,7 +390,7 @@ export default function ScanStage({
     );
     const edgeLine = new THREE.Line(
       edgeGeo,
-      new THREE.LineBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.55 })
+      new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.95 })
     );
     laserFan.add(edgeLine);
 
@@ -312,7 +399,7 @@ export default function ScanStage({
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(3.8, 0, 0)
     ]);
-    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 }));
+    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff1111, linewidth: 3 }));
     laserFan.add(laserBeam);
 
     // 3. Dynamic Forward Perception Corridor (Active Ground Path Scanning)
@@ -361,8 +448,8 @@ export default function ScanStage({
     latestGeo.setDrawRange(0, 0);
 
     const latestMat = new THREE.PointsMaterial({
-      size: pointSize * 1.5,
-      color: 0xffffff,
+      size: Math.max(5.0, pointSize * 2.2),
+      color: 0xff3b30,
       sizeAttenuation: false,
       transparent: true,
       opacity: 1
@@ -403,10 +490,11 @@ export default function ScanStage({
       if (settleStartTimeRef.current > 0 && settleElapsed < 0.6) {
         isSettling = true;
         const rockPitch = 0.02 * Math.exp(-6.0 * settleElapsed) * Math.cos(22.0 * settleElapsed);
-        scaledChassis.rotation.z = rockPitch;
+        scaledChassis.rotation.z = currentPitchRadRef.current + rockPitch;
       } else {
-        scaledChassis.rotation.z = isNavigatingRef.current ? -0.012 : 0;
+        scaledChassis.rotation.z = currentPitchRadRef.current + (isNavigatingRef.current ? -0.012 : 0);
       }
+      scaledChassis.rotation.x = currentRollRadRef.current;
 
       // Synchronized RPLIDAR S2 10 Hz laser sweep beam tracking (600 RPM, 100 ms per rev)
       const isActiveLaser = (isSweepingRef.current || isNavigatingRef.current) && showLaserFanRef.current;
@@ -576,7 +664,6 @@ export default function ScanStage({
 
     // Physical Obstacles & Floor Holes/Voids
     const obsMat = new THREE.MeshStandardMaterial({ color: 0x181a24, roughness: 0.45, metalness: 0.8 });
-    const obsEdgeMat = new THREE.LineBasicMaterial({ color: 0x424859, transparent: true, opacity: 0.9 });
     const holeMat = new THREE.MeshBasicMaterial({ color: 0x030406 });
     const holeEdgeMat = new THREE.LineBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.95 });
 
@@ -590,17 +677,56 @@ export default function ScanStage({
         pitMesh.position.set(obs.x, -pitDepth / 2, obs.z);
         pitMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(pitGeo), holeEdgeMat));
         obstaclesGroup.add(pitMesh);
+      } else if (obs.shape === "cylinder") {
+        const baseY = obs.baseY ?? 0;
+        const radius = obs.radius ?? obs.width / 2;
+        const geo = new THREE.CylinderGeometry(radius, radius, obs.height, 32);
+        const mesh = new THREE.Mesh(geo, obsMat);
+        mesh.position.set(obs.x, baseY + obs.height / 2, obs.z);
+        const cylEdgeMat = new THREE.LineBasicMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.92
+        });
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), cylEdgeMat));
+        obstaclesGroup.add(mesh);
+      } else if (obs.shape === "ramp") {
+        const baseY = obs.baseY ?? 0;
+        const dir = obs.rampDirection ?? "posZ";
+        const geo = createRampGeometry(obs.width, obs.height, obs.depth, dir);
+        const mesh = new THREE.Mesh(geo, obsMat);
+        mesh.position.set(obs.x, baseY, obs.z);
+        const rampEdgeMat = new THREE.LineBasicMaterial({
+          color: 0x10b981, // Emerald green outline for navigable climbing ramps
+          transparent: true,
+          opacity: 0.95
+        });
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), rampEdgeMat));
+        obstaclesGroup.add(mesh);
       } else {
+        const baseY = obs.baseY ?? 0;
         const geo = new THREE.BoxGeometry(obs.width, obs.height, obs.depth);
         const mesh = new THREE.Mesh(geo, obsMat);
-        mesh.position.set(obs.x, obs.height / 2, obs.z);
-        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), obsEdgeMat));
+        mesh.position.set(obs.x, baseY + obs.height / 2, obs.z);
+        // Distinguish high-hangs (violet/indigo), low-hangs/shelves (warm amber), and ground pillars (steel-blue)
+        const edgeColor =
+          baseY >= 1.2 ? 0xa78bfa : baseY > 0 ? 0xf59e0b : 0x38bdf8;
+        const customEdgeMat = new THREE.LineBasicMaterial({
+          color: edgeColor,
+          transparent: true,
+          opacity: 0.92
+        });
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), customEdgeMat));
         obstaclesGroup.add(mesh);
       }
     }
 
+    // Blank world by default: obstaclesGroup is only visible if showGroundTruth is enabled.
+    // The rover's active LiDAR sweep and 3D point cloud reveal the real environment!
+    obstaclesGroup.visible = showGroundTruth;
+
     wake();
-  }, [roomWidth, roomDepth, roomHeight, showRoomBounds, obstacles]);
+  }, [roomWidth, roomDepth, roomHeight, showRoomBounds, obstacles, showGroundTruth]);
 
   // Update Trajectory & Waypoint Paths
   useEffect(() => {
@@ -717,10 +843,10 @@ export default function ScanStage({
 
     const fanGeo = new THREE.RingGeometry(0.06, 3.8, segs, 1, startRad, lenRad);
     const fanMat = new THREE.MeshBasicMaterial({
-      color: 0x991f1f,
+      color: 0xff2222,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.38,
       depthWrite: false
     });
     const fanMesh = new THREE.Mesh(fanGeo, fanMat);
@@ -742,7 +868,7 @@ export default function ScanStage({
     const edgeGeo = new THREE.BufferGeometry().setFromPoints(arcPts);
     const edgeLine = new THREE.Line(
       edgeGeo,
-      new THREE.LineBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.55 })
+      new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.95 })
     );
     laserFan.add(edgeLine);
 
@@ -751,7 +877,7 @@ export default function ScanStage({
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(3.8, 0, 0)
     ]);
-    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 }));
+    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff1111, linewidth: 3 }));
     laserFan.add(laserBeam);
     rt.laserBeam = laserBeam;
 
@@ -763,18 +889,37 @@ export default function ScanStage({
     const rt = runtimeRef.current;
     if (!rt) return;
 
-    const { roverGroup, corridorMesh, tiltHead, laserFan, wake } = rt;
+    const { roverGroup, scaledChassis, corridorMesh, tiltHead, laserFan, wake } = rt;
 
-    roverGroup.position.set(roverPose.x, 0, roverPose.z);
+    const effectiveRoom: RoomEnvironment = currentRoom ?? {
+      id: "custom",
+      name: "Custom",
+      width: roomWidth,
+      depth: roomDepth,
+      height: roomHeight ?? 3,
+      description: "",
+      obstacles
+    };
+    const attitude = getRoomAttitudeAt(effectiveRoom, roverPose.x, roverPose.z, roverPose.heading);
+
+    roverGroup.position.set(roverPose.x, attitude.elevation, roverPose.z);
     // In Three.js, positive Y rotation rotates +X toward -Z.
     // Mathematical heading: 0° = +X, 90° = +Z, so rotation.y must be -headingRad.
     roverGroup.rotation.y = -(roverPose.heading * Math.PI) / 180;
+
+    const pitchRad = (attitude.pitchDeg * Math.PI) / 180;
+    const rollRad = (attitude.rollDeg * Math.PI) / 180;
+    currentPitchRadRef.current = pitchRad;
+    currentRollRadRef.current = rollRad;
+    scaledChassis.rotation.x = rollRad;
+    scaledChassis.rotation.z = pitchRad + (isNavigating ? -0.012 : 0);
 
     tiltHead.position.set(0.08, sensorHeight, 0);
     // Downward angle window while moving to scan floor paths void of obstacles/holes, or 0° level interlock
     const defaultNavTilt = isNavigating ? 0 : tiltDeg;
     const effectiveTilt = isNavigating ? tiltDeg : defaultNavTilt;
-    tiltHead.rotation.z = (effectiveTilt * Math.PI) / 180;
+    // Autonomous inertial tilt leveling: compensate ST3215 servo elevation by chassis pitch
+    tiltHead.rotation.z = ((effectiveTilt - attitude.pitchDeg) * Math.PI) / 180;
 
     laserFan.visible = showLaserFan;
 
@@ -793,7 +938,21 @@ export default function ScanStage({
     prevNavigatingRef.current = isNavigating;
 
     wake();
-  }, [roverPose.x, roverPose.z, roverPose.heading, tiltDeg, sensorHeight, showLaserFan, isNavigating, isHazardAhead]);
+  }, [
+    roverPose.x,
+    roverPose.z,
+    roverPose.heading,
+    tiltDeg,
+    sensorHeight,
+    showLaserFan,
+    isNavigating,
+    isHazardAhead,
+    currentRoom,
+    roomWidth,
+    roomDepth,
+    roomHeight,
+    obstacles
+  ]);
 
   // Update Point Cloud and Ribbons (Zero-Garbage Collection Buffer Streaming)
   useEffect(() => {
@@ -801,9 +960,9 @@ export default function ScanStage({
     if (!rt) return;
 
     const { pointsMesh, latestMesh, ribbonsMesh, wake } = rt;
-    (pointsMesh.material as THREE.PointsMaterial).size = pointSize;
-    (pointsMesh.material as THREE.PointsMaterial).opacity = registrationMode === "raw_odometry" ? 0.72 : 0.92;
-    (latestMesh.material as THREE.PointsMaterial).size = pointSize * 1.5;
+    (pointsMesh.material as THREE.PointsMaterial).size = Math.max(3.2, pointSize * 1.3);
+    (pointsMesh.material as THREE.PointsMaterial).opacity = registrationMode === "raw_odometry" ? 0.72 : 0.95;
+    (latestMesh.material as THREE.PointsMaterial).size = Math.max(5.0, pointSize * 2.2);
 
     const count = points.length;
     let posAttr = pointsMesh.geometry.getAttribute("position") as THREE.BufferAttribute;
@@ -813,7 +972,7 @@ export default function ScanStage({
     let reallocated = false;
 
     if (!posAttr || posAttr.count < count) {
-      const capacity = Math.max(60000, count + 10000);
+      const capacity = Math.max(120000, count + 20000);
       const positions = new Float32Array(capacity * 3);
       const colors = new Float32Array(capacity * 3);
       pointsMesh.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -829,7 +988,7 @@ export default function ScanStage({
     const isReset =
       reallocated ||
       count < renderedPointCountRef.current ||
-      (count < 50000 && prevFirstPointRef.current !== firstPoint) ||
+      prevFirstPointRef.current !== firstPoint ||
       prevColorModeRef.current !== colorMode ||
       prevRoomHeightRef.current !== roomHeight;
 

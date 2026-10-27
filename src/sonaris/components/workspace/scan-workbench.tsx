@@ -11,13 +11,18 @@ import {
   generateMecanumTrajectory,
   scanDrivingCorridor,
   evaluateAutonomousDecision,
+  extractPerceptionsFromPoints,
+  analyzePerceptionGaps,
   addMecanumOdometryDrift,
   alignScanICP,
   type PathPerceptionHazard,
   ROOM_PRESETS,
   type RoomEnvironment,
   type CoverageReport,
-  type TrajectoryPoint
+  type TrajectoryPoint,
+  getRoomElevationAt,
+  getRoomAttitudeAt,
+  filterDuplicateVoxelPoints
 } from "@/sonaris/lib/sonaris-coverage";
 import type { RoverPose } from "./scan-stage";
 import styles from "./scan-workbench.module.css";
@@ -48,6 +53,7 @@ export interface ScanWorkbenchProps {
 }
 
 export const FIXED_SENSOR_HEIGHT = 0.26;
+export const MAX_POINT_CAPACITY = 100000;
 
 export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   const initial = useRef(cache?.current).current;
@@ -77,6 +83,10 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   const [activeWaypointIndex, setActiveWaypointIndex] = useState<number>(-1);
   const [interactMode, setInteractMode] = useState<"waypoint" | "direct">("waypoint");
   const [sweepPrecision, setSweepPrecision] = useState<number>(10);
+  const totalSweepSteps = useMemo(
+    () => (sweepPrecision === 10 ? 10 : Math.round(90 / sweepPrecision) + 1),
+    [sweepPrecision]
+  );
   const [scanAperture, setScanAperture] = useState<270 | 360 | 180>(270);
   const [hazardAhead, setHazardAhead] = useState<PathPerceptionHazard | null>(null);
   const raysPerPlane = scanAperture; // 1 ray per degree across optical aperture
@@ -88,6 +98,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   const [displayMode] = useState<"cloud" | "split" | "slice">("cloud");
   const [registrationMode, setRegistrationMode] = useState<"slam_registered" | "raw_odometry">("slam_registered");
   const [icpResidual, setIcpResidual] = useState<number | null>(null);
+  const [showGroundTruth, setShowGroundTruth] = useState<boolean>(false);
 
   // Secondary pipeline parameters
   const heightFilter = useMemo<[number, number]>(() => [0.0, 3.0], []);
@@ -112,8 +123,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     let minX = Infinity, maxX = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
     let maxY = -Infinity;
-    // Fast sampled bounds if point cloud is large
-    const stride = points.length > 5000 ? Math.floor(points.length / 4000) : 1;
+    // Fast sampled bounds if point cloud is large (capped to at most 1000 sample points for sub-millisecond execution)
+    const stride = points.length > 2000 ? Math.floor(points.length / 1000) : 1;
     for (let i = 0; i < points.length; i += stride) {
       const p = points[i];
       if (p.x < minX) minX = p.x;
@@ -136,7 +147,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   const coverageReport = useMemo<CoverageReport>(() => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     const isBusy = operationState === "tilt_record" || operationState === "transit";
-    if (isBusy && cachedCoverageReportRef.current && now - lastCoverageCalcTimeRef.current < 1200) {
+    if (isBusy && cachedCoverageReportRef.current && now - lastCoverageCalcTimeRef.current < 2000) {
       return cachedCoverageReportRef.current;
     }
     const report = analyzeCoverageAndGaps(
@@ -160,6 +171,11 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       navPath.length > 0 ? navPath[navPath.length - 1] : [roverPose.x, roverPose.z];
     return computeAPF([roverPose.x, roverPose.z], goal, currentRoom.obstacles);
   }, [activeInspectorTab, roverPose.x, roverPose.z, navPath, currentRoom.obstacles]);
+
+  const currentAttitude = useMemo(
+    () => getRoomAttitudeAt(currentRoom, roverPose.x, roverPose.z, roverPose.heading),
+    [currentRoom, roverPose.x, roverPose.z, roverPose.heading]
+  );
 
   // Synchronize cache
   useEffect(() => {
@@ -225,6 +241,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           : pose;
 
       const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
+      const elev = getRoomElevationAt(currentRoom, effectivePose.x, effectivePose.z);
       const slice = scanRoom(
         currentRoom.width,
         currentRoom.depth,
@@ -235,7 +252,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         customRays,
         30,
         0.008, // Calibrated ±30 mm standard DToF dispersion
-        FIXED_SENSOR_HEIGHT,
+        FIXED_SENSOR_HEIGHT + elev,
         currentRoom.obstacles,
         currentRoom.height,
         scanAperture,
@@ -266,11 +283,17 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         } else {
           setIcpResidual(0.004);
         }
-        setPoints((prev) => [...prev, ...slice].slice(-50000));
+        setPoints((prev) => {
+          const fresh = filterDuplicateVoxelPoints(slice, prev, 0.025);
+          return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+        });
         setLatestPoints(slice);
       } else {
         setIcpResidual(null);
-        setPoints((prev) => [...prev, ...slice].slice(-50000));
+        setPoints((prev) => {
+          const fresh = filterDuplicateVoxelPoints(slice, prev, 0.025);
+          return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+        });
         setLatestPoints(slice);
       }
 
@@ -286,6 +309,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       const allSlices: ScanPoint[] = [];
 
       for (const ang of angles) {
+        const elev = getRoomElevationAt(currentRoom, pose.x, pose.z);
         const slice = scanRoom(
           currentRoom.width,
           currentRoom.depth,
@@ -296,7 +320,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           raysPerPlane,
           30,
           0.008,
-          FIXED_SENSOR_HEIGHT,
+          FIXED_SENSOR_HEIGHT + elev,
           currentRoom.obstacles,
           currentRoom.height,
           scanAperture,
@@ -312,7 +336,10 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         allSlices.push(...slice);
       }
 
-      setPoints((prev) => [...prev, ...allSlices].slice(-50000));
+      setPoints((prev) => {
+        const fresh = filterDuplicateVoxelPoints(allSlices, prev, 0.025);
+        return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+      });
       setLatestPoints(allSlices);
       return allSlices.length;
     },
@@ -367,10 +394,16 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       let lastTrackX = roverPoseRef.current.x;
       let lastTrackZ = roverPoseRef.current.z;
       let lastGroundScanTime = 0;
+      const inMotionBuffer: ScanPoint[] = [];
 
       const stepKinematics = () => {
         if (trajIndex < trajectory.length) {
           const pt: TrajectoryPoint = trajectory[trajIndex];
+
+          const finalWp = waypoints[waypoints.length - 1];
+          const distToGoal = finalWp ? Math.hypot(finalWp[0] - pt.x, finalWp[1] - pt.z) : 1.0;
+          // Dynamically scale lookahead so the sensor doesn't throw false alarms on walls beyond destination
+          const dynamicLookahead = Math.min(0.85, Math.max(0.28, distToGoal + 0.15));
 
           // Active downward ground inspection angle window (-16°) to scan floor paths void of obstacles/holes
           const hazard = scanDrivingCorridor(
@@ -378,7 +411,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             currentRoom.obstacles,
             currentRoom.width,
             currentRoom.depth,
-            0.85,
+            dynamicLookahead,
             -16
           );
 
@@ -398,15 +431,17 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           let activeRPMs = pt.wheelRPMs;
 
           if (decision.action === "detour_left" || decision.action === "detour_right") {
-            // Holonomic lateral swerve/strafe around obstacle or floor void
-            accumulatedNudgeX += decision.lateralNudge[0];
-            accumulatedNudgeZ += decision.lateralNudge[1];
+            const rad = (pt.headingDeg * Math.PI) / 180;
+            const sign = decision.action === "detour_left" ? -1 : 1;
+            // Bounded physical lateral strafe deviation (max 18 cm)
+            const targetOffset = sign * 0.18;
+            accumulatedNudgeX = accumulatedNudgeX * 0.85 + (-Math.sin(rad) * targetOffset) * 0.15;
+            accumulatedNudgeZ = accumulatedNudgeZ * 0.85 + (Math.cos(rad) * targetOffset) * 0.15;
             currentX += accumulatedNudgeX;
             currentZ += accumulatedNudgeZ;
 
-            const sign = decision.action === "detour_left" ? 1 : -1;
-            const localVx = 0.35;
-            const localVy = (sign * 0.22) / 0.78;
+            const localVx = 0.30;
+            const localVy = (sign * 0.16) / 0.82;
             try {
               const omegas = wheelSpeeds(localVx, localVy, 0, 0.05, 0.17, 0.14);
               activeRPMs = [
@@ -425,20 +460,45 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
               );
             }
           } else if (decision.action === "halt_blocked") {
-            setWheelRPMs([0, 0, 0, 0]);
-            setOperationState("settle");
-            setTilt(0);
-            setScanMessage(`[DECISION: SAFETY HALT] ${decision.reason} · Rover stopped before hazard.`);
-            onArrival({
-              x: Number((pt.x + accumulatedNudgeX).toFixed(2)),
-              z: Number((pt.z + accumulatedNudgeZ).toFixed(2)),
-              heading: pt.headingDeg
-            });
-            return;
+            // Unstuck & Recovery logic:
+            // 1. If near goal, cleanly settle at current safe position
+            if (distToGoal < 0.28) {
+              if (inMotionBuffer.length > 0) {
+                const batch = inMotionBuffer.splice(0, inMotionBuffer.length);
+                setPoints((prev) => {
+                  const fresh = filterDuplicateVoxelPoints(batch, prev, 0.025);
+                  return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+                });
+              }
+              setWheelRPMs([0, 0, 0, 0]);
+              setOperationState("settle");
+              setTilt(0);
+              setScanMessage(`[DESTINATION REACHED] Settled within target tolerance near boundary. 0° Level Interlock engaged.`);
+              onArrival({
+                x: Number(currentX.toFixed(2)),
+                z: Number(currentZ.toFixed(2)),
+                heading: pt.headingDeg
+              });
+              return;
+            }
+
+            // 2. If at initial departure or mid-flight edge pinch, apply inward recovery nudge instead of freezing
+            const inwardNudgeX = pt.x > 0 ? -0.12 : 0.12;
+            const inwardNudgeZ = pt.z > 0 ? -0.12 : 0.12;
+            accumulatedNudgeX = accumulatedNudgeX * 0.7 + inwardNudgeX * 0.3;
+            accumulatedNudgeZ = accumulatedNudgeZ * 0.7 + inwardNudgeZ * 0.3;
+            currentX += accumulatedNudgeX;
+            currentZ += accumulatedNudgeZ;
+
+            if (trajIndex % 8 === 0) {
+              setScanMessage(
+                `[EDGE CLEARANCE RECOVERY] Lateral inward disengagement active. Clearing boundary inflation zone.`
+              );
+            }
           } else {
-            // Continuous clear ground: decay lateral nudge back to waypoint baseline
-            accumulatedNudgeX *= 0.94;
-            accumulatedNudgeZ *= 0.94;
+            // Decay any lateral deviation smoothly back to zero along clean corridor
+            accumulatedNudgeX *= 0.90;
+            accumulatedNudgeZ *= 0.90;
             currentX += accumulatedNudgeX;
             currentZ += accumulatedNudgeZ;
 
@@ -448,6 +508,12 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
               );
             }
           }
+
+          // Strict boundary envelope enforcement: never allow chassis center past safe wall margin
+          const safeRoomW = currentRoom.width / 2 - 0.20;
+          const safeRoomD = currentRoom.depth / 2 - 0.20;
+          currentX = Math.max(-safeRoomW, Math.min(safeRoomW, currentX));
+          currentZ = Math.max(-safeRoomD, Math.min(safeRoomD, currentZ));
 
           // Report live progress position for waypoint progression
           onProgress?.(currentX, currentZ);
@@ -462,25 +528,29 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           }
 
           // Synchronize wheel RPM and continuous in-motion scanning with 10 Hz RPLIDAR S2 rotation (100 ms)
-          // Synchronize wheel RPM and downward ground verification scan with authentic 10 Hz RPLIDAR S2 rotation (100 ms)
           const now = performance.now();
-          if (now - lastGroundScanTime >= 100) {
+          if (now - lastGroundScanTime >= 80) {
             lastGroundScanTime = now;
             setWheelRPMs(activeRPMs);
 
-            // Active downward ground verification scan (-16° window) under live 10 Hz laser beam
+            // Dynamic in-motion elevation sweep oscillating between -22° (ground void lookahead) and +10° (forward room)
+            const dynamicNavTilt = Number((-6.0 + 16.0 * Math.sin(trajIndex * 0.12)).toFixed(1));
+            setTilt(dynamicNavTilt);
+
+            // Active in-motion scan under live 10 Hz laser beam
             const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
+            const elev = getRoomElevationAt(currentRoom, currentX, currentZ);
             const inMotionReturns = scanRoom(
               currentRoom.width,
               currentRoom.depth,
               currentX,
               currentZ,
               pt.headingDeg,
-              -16,
-              60, // 60 rays for live ground & obstacle projection
+              dynamicNavTilt,
+              raysPerPlane,
               30,
               0.005,
-              FIXED_SENSOR_HEIGHT,
+              FIXED_SENSOR_HEIGHT + elev,
               currentRoom.obstacles,
               currentRoom.height,
               scanAperture,
@@ -493,7 +563,22 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                 useGaussianNoise: true
               }
             );
+
+            // Update real-time laser slice highlight
             setLatestPoints(inMotionReturns);
+
+            for (let i = 0; i < inMotionReturns.length; i++) {
+              inMotionBuffer.push(inMotionReturns[i]);
+            }
+
+            // Stream continuous in-motion scan returns directly into the 3D map
+            if (inMotionBuffer.length >= 240) {
+              const batch = inMotionBuffer.splice(0, inMotionBuffer.length);
+              setPoints((prev) => {
+                const fresh = filterDuplicateVoxelPoints(batch, prev, 0.025);
+                return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+              });
+            }
           }
 
           // Append odometry breadcrumbs only when rover moved > 12 cm to eliminate DOM/GPU buffer churn
@@ -506,6 +591,13 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           trajIndex++;
           navAnimFrameRef.current = requestAnimationFrame(stepKinematics);
         } else {
+          if (inMotionBuffer.length > 0) {
+            const batch = inMotionBuffer.splice(0, inMotionBuffer.length);
+            setPoints((prev) => {
+              const fresh = filterDuplicateVoxelPoints(batch, prev, 0.025);
+              return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+            });
+          }
           const dest = waypoints[waypoints.length - 1];
           const arrived: RoverPose = {
             x: Number((dest[0] + accumulatedNudgeX).toFixed(2)),
@@ -532,7 +624,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
 
       navAnimFrameRef.current = requestAnimationFrame(stepKinematics);
     },
-    [roverPose, reducedMotion, currentRoom, scanAperture]
+    [roverPose, reducedMotion, currentRoom, scanAperture, raysPerPlane]
   );
 
   // Synchronized Multi-Plane Tilt Sweep (-30° to +60°)
@@ -561,6 +653,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
 
         // Scan current elevation slice with S2 raycaster
         const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
+        const elev = getRoomElevationAt(currentRoom, pose.x, pose.z);
         const slice = scanRoom(
           currentRoom.width,
           currentRoom.depth,
@@ -571,7 +664,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           raysPerPlane,
           30,
           0.008,
-          FIXED_SENSOR_HEIGHT,
+          FIXED_SENSOR_HEIGHT + elev,
           currentRoom.obstacles,
           currentRoom.height,
           scanAperture,
@@ -594,12 +687,15 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         sweepStepRef.current = step;
         setSteps(step);
 
-        // Batch commit to React point cloud state: commit midway and on completion to eliminate intermediate render churn
-        const batchStride = sweepPrecision === 10 ? 5 : Math.max(5, Math.round(totalSteps / 2));
+        // Batch commit to React point cloud state: commit periodically and on completion to eliminate intermediate render churn
+        const batchStride = sweepPrecision === 10 ? 5 : Math.max(10, Math.round(totalSteps / 4));
         if (step % batchStride === 0 && sweepBufferRef.current.length > 0) {
           const pending = sweepBufferRef.current;
           sweepBufferRef.current = [];
-          setPoints((prev) => [...prev, ...pending].slice(-50000));
+          setPoints((prev) => {
+            const fresh = filterDuplicateVoxelPoints(pending, prev, 0.025);
+            return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+          });
         }
 
         if (step >= totalSteps) {
@@ -610,7 +706,10 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           if (sweepBufferRef.current.length > 0) {
             const pending = sweepBufferRef.current;
             sweepBufferRef.current = [];
-            setPoints((prev) => [...prev, ...pending].slice(-50000));
+            setPoints((prev) => {
+              const fresh = filterDuplicateVoxelPoints(pending, prev, 0.025);
+              return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+            });
           }
           setOperationState("gap_evaluate");
           setScanMessage(
@@ -752,12 +851,19 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   }, [cancelOperations, executeSweepAtPose, roverPose]);
 
   const handleAddWaypoint = useCallback((pt: [number, number]) => {
+    // Clamp waypoint to safe interior so points near boundary lines don't breach walls
+    const safeW = currentRoom.width / 2 - 0.28;
+    const safeD = currentRoom.depth / 2 - 0.28;
+    const clampedPt: [number, number] = [
+      Number(Math.max(-safeW, Math.min(safeW, pt[0])).toFixed(2)),
+      Number(Math.max(-safeD, Math.min(safeD, pt[1])).toFixed(2))
+    ];
     setWaypoints((prev) => {
-      const next = [...prev, pt];
-      setScanMessage(`Waypoint ${next.length} added at [${pt[0]}m, ${pt[1]}m]. Click 'Run Route' to survey.`);
+      const next = [...prev, clampedPt];
+      setScanMessage(`Waypoint ${next.length} added at [${clampedPt[0]}m, ${clampedPt[1]}m]. Click 'Run Route' to survey.`);
       return next;
     });
-  }, []);
+  }, [currentRoom.width, currentRoom.depth]);
 
   const handleClearWaypoints = useCallback(() => {
     setWaypoints([]);
@@ -776,73 +882,108 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     setIsAutoSurveying(true);
     setActiveWaypointIndex(0);
 
-    // Concatenate obstacle-free paths across all plotted waypoints
-    const fullConnectedPath: [number, number][] = [];
-    let startPoint: [number, number] = [roverPose.x, roverPose.z];
-    for (let i = 0; i < waypoints.length; i++) {
-      const targetPoint = waypoints[i];
-      const leg = findNavPath(
-        startPoint,
-        targetPoint,
-        currentRoom.obstacles,
+    const planAndExecutePath = (currentPoints: ScanPoint[]) => {
+      // Extract perceived obstacles & voids directly from actual scanned LiDAR points (no ground truth cheat)
+      const { perceivedObstacles, floorVoids, clusters } = extractPerceptionsFromPoints(
+        currentPoints,
         currentRoom.width,
         currentRoom.depth
       );
-      for (let j = i === 0 ? 0 : 1; j < leg.length; j++) {
-        fullConnectedPath.push(leg[j]);
-      }
-      startPoint = targetPoint;
-    }
 
-    if (fullConnectedPath.length < 2) {
-      fullConnectedPath.push(waypoints[0]);
-    }
+      // Concatenate obstacle-free paths across all plotted waypoints
+      const fullConnectedPath: [number, number][] = [];
+      let startPoint: [number, number] = [roverPoseRef.current.x, roverPoseRef.current.z];
+      let bestGapSummary = "";
 
-    // Target final departure heading
-    const lastP0 = fullConnectedPath[fullConnectedPath.length - 2] ?? [roverPose.x, roverPose.z];
-    const lastP1 = fullConnectedPath[fullConnectedPath.length - 1];
-    const lastDx = lastP1[0] - lastP0[0];
-    const lastDz = lastP1[1] - lastP0[1];
-    const finalHeading =
-      Math.hypot(lastDx, lastDz) > 0.05
-        ? Math.round((Math.atan2(lastDz, lastDx) * 180) / Math.PI + 360) % 360
-        : roverPose.heading;
+      for (let i = 0; i < waypoints.length; i++) {
+        const targetPoint = waypoints[i];
 
-    setScanMessage(
-      `Starting continuous navigation across ${waypoints.length} waypoints. Actively scanning and mapping in motion.`
-    );
-
-    navigateRoverAlongPath(
-      fullConnectedPath,
-      finalHeading,
-      (arrivedPose) => {
-        setIsAutoSurveying(false);
-        setActiveWaypointIndex(-1);
-        setOperationState("idle");
-        setScanMessage(
-          `Continuous route survey complete across ${waypoints.length} waypoints at [${arrivedPose.x}m, ${arrivedPose.z}m]. 3D room perimeter reconstructed on the move without camera.`
+        // Investigate perception gaps between perceived obstacle clusters
+        const gaps = analyzePerceptionGaps(
+          { x: startPoint[0], z: startPoint[1], heading: roverPoseRef.current.heading },
+          targetPoint,
+          perceivedObstacles,
+          currentRoom.width,
+          currentRoom.depth
         );
-      },
-      (currentX, currentZ) => {
-        // Track closest active plotted waypoint continuously
-        let closestIdx = 0;
-        let minD = Infinity;
-        for (let w = 0; w < waypoints.length; w++) {
-          const d = Math.hypot(waypoints[w][0] - currentX, waypoints[w][1] - currentZ);
-          if (d < minD) {
-            minD = d;
-            closestIdx = w;
-          }
+
+        if (i === 0 && gaps.length > 0) {
+          bestGapSummary = gaps[0].reason;
         }
-        setActiveWaypointIndex(closestIdx);
+
+        const leg = findNavPath(
+          startPoint,
+          targetPoint,
+          perceivedObstacles,
+          currentRoom.width,
+          currentRoom.depth
+        );
+        for (let j = i === 0 ? 0 : 1; j < leg.length; j++) {
+          fullConnectedPath.push(leg[j]);
+        }
+        startPoint = targetPoint;
       }
-    );
+
+      if (fullConnectedPath.length < 2) {
+        fullConnectedPath.push(waypoints[0]);
+      }
+
+      // Target final departure heading
+      const lastP0 = fullConnectedPath[fullConnectedPath.length - 2] ?? [roverPoseRef.current.x, roverPoseRef.current.z];
+      const lastP1 = fullConnectedPath[fullConnectedPath.length - 1];
+      const lastDx = lastP1[0] - lastP0[0];
+      const lastDz = lastP1[1] - lastP0[1];
+      const finalHeading =
+        Math.hypot(lastDx, lastDz) > 0.05
+          ? Math.round((Math.atan2(lastDz, lastDx) * 180) / Math.PI + 360) % 360
+          : roverPoseRef.current.heading;
+
+      setScanMessage(
+        `[PERCEPTION CADENCE] ${clusters.length} obstacle clusters & ${floorVoids.length} floor voids mapped. Gaps evaluated: ${bestGapSummary} Executing smooth Theta* path.`
+      );
+
+      navigateRoverAlongPath(
+        fullConnectedPath,
+        finalHeading,
+        (arrivedPose) => {
+          setIsAutoSurveying(false);
+          setActiveWaypointIndex(-1);
+          setOperationState("idle");
+          setScanMessage(
+            `Continuous route survey complete across ${waypoints.length} waypoints at [${arrivedPose.x}m, ${arrivedPose.z}m]. 3D room surfaces revealed by laser returns.`
+          );
+        },
+        (currentX, currentZ) => {
+          // Track closest active plotted waypoint continuously
+          let closestIdx = 0;
+          let minD = Infinity;
+          for (let w = 0; w < waypoints.length; w++) {
+            const d = Math.hypot(waypoints[w][0] - currentX, waypoints[w][1] - currentZ);
+            if (d < minD) {
+              minD = d;
+              closestIdx = w;
+            }
+          }
+          setActiveWaypointIndex(closestIdx);
+        }
+      );
+    };
+
+    // If point cloud is empty (blank room initially), conduct Stop -> Scan first to reveal surroundings!
+    if (pointsRef.current.length === 0) {
+      setScanMessage("Blank arena initialized. Executing 3D perception sweep to reveal environment and discover obstacles/voids...");
+      executeSweepAtPose(roverPoseRef.current, () => {
+        planAndExecutePath(pointsRef.current);
+      });
+    } else {
+      planAndExecutePath(pointsRef.current);
+    }
   }, [
     cancelOperations,
     waypoints,
-    roverPose,
     currentRoom,
-    navigateRoverAlongPath
+    navigateRoverAlongPath,
+    executeSweepAtPose
   ]);
 
   // Dynamic Frontier-Based Autonomous Survey
@@ -908,10 +1049,17 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     (targetPose: RoverPose) => {
       if (operationState === "transit" || operationState === "tilt_record") return;
 
+      // Extract perceived obstacles directly from the actual scanned point cloud
+      const { perceivedObstacles } = extractPerceptionsFromPoints(
+        pointsRef.current,
+        currentRoom.width,
+        currentRoom.depth
+      );
+
       const path = findNavPath(
         [roverPose.x, roverPose.z],
         [targetPose.x, targetPose.z],
-        currentRoom.obstacles,
+        perceivedObstacles,
         currentRoom.width,
         currentRoom.depth
       );
@@ -973,16 +1121,32 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
               Clear
             </button>
           )}
-          <div className="hidden">
-            {ROOM_PRESETS.map((room) => (
-              <button
-                key={room.id}
-                type="button"
-                onClick={() => handleRoomChange(room.id)}
-              >
-                {room.name}
-              </button>
-            ))}
+          <div className="flex items-center gap-1 border-l border-[var(--sonaris-border)] pl-2 ml-1">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--sonaris-studio-muted)]">
+              World:
+            </span>
+            <select
+              value={selectedRoomId}
+              onChange={(e) => handleRoomChange(e.target.value as RoomEnvironment["id"])}
+              className={styles.toolBtn}
+              aria-label="Simulation world environment"
+              title="Select simulation arena environment"
+            >
+              {ROOM_PRESETS.map((room) => (
+                <option key={room.id} value={room.id} className="bg-[#0b0d13] text-[#f1f3f7]">
+                  {room.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={styles.toolBtn}
+              aria-pressed={showGroundTruth}
+              onClick={() => setShowGroundTruth((v) => !v)}
+              title="Toggle between Blank Arena (revealed solely by LiDAR point cloud) and Ground Truth CAD mesh"
+            >
+              {showGroundTruth ? "World: Ground Truth" : "World: Blank Reveal"}
+            </button>
           </div>
         </div>
 
@@ -1066,8 +1230,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           >
             {operationState === "tilt_record"
               ? "Pause Sweep"
-              : steps > 0 && steps < 10
-                ? `Resume (${steps}/10)`
+              : steps > 0 && steps < totalSweepSteps
+                ? `Resume (${steps}/${totalSweepSteps})`
                 : `Sweep (${sweepPrecision}°)`}
           </button>
 
@@ -1161,6 +1325,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
               onAddWaypoint={handleAddWaypoint}
               interactMode={interactMode}
               obstacles={currentRoom.obstacles}
+              currentRoom={currentRoom}
               navPath={navPath}
               odometryTrack={odometryTrack}
               isNavigating={operationState === "transit"}
@@ -1176,6 +1341,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
               isSweeping={operationState === "tilt_record"}
               registrationMode={registrationMode}
               scanApertureDeg={scanAperture}
+              showGroundTruth={showGroundTruth}
             />
 
             <div className={styles.stageHud}>
@@ -1185,7 +1351,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                   : "Click floor to direct-navigate rover · 0° Level Interlock"}
               </span>
               <span className="font-mono tabular-nums font-semibold">
-                [{roverPose.x.toFixed(1)}m, {roverPose.z.toFixed(1)}m] · {roverPose.heading}° · {registrationMode === "slam_registered" ? "SLAM ICP" : "Raw Odom"} · {coverageReport.coveragePercent}% mapped · {points.length} pts
+                [{roverPose.x.toFixed(1)}m, {roverPose.z.toFixed(1)}m{currentAttitude.elevation > 0 ? `, +${currentAttitude.elevation.toFixed(2)}m` : ""}] · {currentAttitude.pitchDeg !== 0 ? `P:${currentAttitude.pitchDeg > 0 ? "+" : ""}${currentAttitude.pitchDeg}° ` : ""}{roverPose.heading}° · {registrationMode === "slam_registered" ? "SLAM ICP" : "Raw Odom"} · {coverageReport.coveragePercent}% mapped · {points.length} pts
               </span>
             </div>
           </div>
@@ -1228,7 +1394,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                         : operationState === "settle"
                           ? "Phase 2: Settle"
                           : operationState === "tilt_record"
-                            ? `Phase 3: Tilt & Rec (${steps}/10)`
+                            ? `Phase 3: Tilt & Rec (${steps}/${totalSweepSteps})`
                             : operationState === "gap_evaluate"
                               ? "Phase 4: Gap Eval"
                               : "Stationary"}
@@ -1270,9 +1436,21 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                       </dd>
                     </div>
                     <div className={styles.ledgerRow}>
+                      <dt>Active World</dt>
+                      <dd className={styles.monoVal}>
+                        {currentRoom.name}
+                      </dd>
+                    </div>
+                    <div className={styles.ledgerRow}>
+                      <dt>Terrain Attitude</dt>
+                      <dd className={styles.monoVal}>
+                        Elev {currentAttitude.elevation.toFixed(2)}m · Pitch {currentAttitude.pitchDeg > 0 ? "+" : ""}{currentAttitude.pitchDeg}° · Roll {currentAttitude.rollDeg > 0 ? "+" : ""}{currentAttitude.rollDeg}°
+                      </dd>
+                    </div>
+                    <div className={styles.ledgerRow}>
                       <dt>Cadence Flow</dt>
                       <dd className={styles.monoVal}>
-                        Move → Settle → Sweep ({sweepPrecision}°) → Yaw Search (±45°)
+                        Continuous In-Motion Scan (Dynamic Pitch) · Corridor Void &amp; Obstacle Verification
                       </dd>
                     </div>
                     <div className={styles.ledgerRow}>
@@ -1302,7 +1480,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                     <div className={styles.ledgerRow}>
                       <dt>Point Buffer</dt>
                       <dd className={styles.monoVal}>
-                        {points.length} pts ({steps}/10 planes)
+                        {points.length} pts ({steps}/${totalSweepSteps} planes)
                       </dd>
                     </div>
                     <div className={styles.ledgerRow}>

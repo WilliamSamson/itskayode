@@ -163,4 +163,111 @@ describe("SONARIS Spatial Coverage and Gap Analysis", () => {
     expect(["detour_left", "detour_right"]).toContain(holeDecision.action);
     expect(holeDecision.reason).toContain("Floor void");
   });
+
+  it("interpolates continuous elevation across ramps, mezzanines, and curbs", async () => {
+    const { getRoomElevationAt, ROOM_PRESETS } = await import("@/sonaris/lib/sonaris-coverage");
+    const rampRoom = ROOM_PRESETS.find((r) => r.id === "mezzanine_ramp")!;
+    expect(rampRoom).toBeDefined();
+
+    // At the start of the ramp (z = 0.2 - 1.2 = -1.0)
+    const elevStart = getRoomElevationAt(rampRoom, -0.6, -1.0);
+    expect(elevStart).toBeCloseTo(0, 2);
+
+    // Halfway up the ramp (z = 0.2)
+    const elevMid = getRoomElevationAt(rampRoom, -0.6, 0.2);
+    expect(elevMid).toBeCloseTo(0.21, 2);
+
+    // At the top of the ramp (z = 0.2 + 1.2 = 1.4)
+    const elevTop = getRoomElevationAt(rampRoom, -0.6, 1.4);
+    expect(elevTop).toBeCloseTo(0.42, 2);
+
+    // On the elevated mezzanine floor
+    const elevMezzanine = getRoomElevationAt(rampRoom, -0.6, 2.1);
+    expect(elevMezzanine).toBeCloseTo(0.42, 2);
+
+    // Off the ramp on open ground
+    const elevGround = getRoomElevationAt(rampRoom, 2.0, -1.0);
+    expect(elevGround).toBe(0);
+  });
+
+  it("calculates 3D surface attitude (ground pitch & roll angles) from terrain elevation gradients", async () => {
+    const { getRoomAttitudeAt, ROOM_PRESETS } = await import("@/sonaris/lib/sonaris-coverage");
+    const rampRoom = ROOM_PRESETS.find((r) => r.id === "mezzanine_ramp")!;
+
+    // Heading 90° (+Z, driving directly up the ramp)
+    // Ramp slope: 0.42m rise / 2.4m run = 0.175 gradient -> atan(0.175) ≈ 9.9° pitch
+    const uphillAttitude = getRoomAttitudeAt(rampRoom, -0.6, 0.2, 90);
+    expect(uphillAttitude.elevation).toBeCloseTo(0.21, 2);
+    expect(uphillAttitude.pitchDeg).toBeGreaterThan(8);
+    expect(uphillAttitude.pitchDeg).toBeLessThan(12);
+    expect(Math.abs(uphillAttitude.rollDeg)).toBeLessThan(1); // Straight uphill: roll is ~0
+
+    // Heading 270° (-Z, driving down the ramp)
+    const downhillAttitude = getRoomAttitudeAt(rampRoom, -0.6, 0.2, 270);
+    expect(downhillAttitude.pitchDeg).toBeLessThan(-8);
+    expect(downhillAttitude.pitchDeg).toBeGreaterThan(-12);
+
+    // Heading 0° (+X, driving across the ramp contour laterally)
+    const traverseAttitude = getRoomAttitudeAt(rampRoom, -0.6, 0.2, 0);
+    expect(Math.abs(traverseAttitude.pitchDeg)).toBeLessThan(1);
+    expect(Math.abs(traverseAttitude.rollDeg)).toBeGreaterThan(8); // Lateral roll on side-slope
+  });
+
+  it("raycasts cylindrical pillars and inclined ramp wedges with authentic normals", async () => {
+    const { scanRoom } = await import("@/sonaris/lib/sonaris-engine");
+
+    // Test Cylinder Obstacle: cylinder at (0, 2) with radius 0.4m
+    const cylinderObs = [{ x: 0, z: 2, width: 0.8, depth: 0.8, height: 2.0, shape: "cylinder" as const, radius: 0.4 }];
+    // Rover at (0, 0) facing 90° (+Z)
+    const pointsCyl = scanRoom(6, 6, 0, 0, 90, 0, 1, 10, 0, 0.26, cylinderObs, 3, 10, 0, { includeNormals: true });
+    expect(pointsCyl.length).toBe(1);
+    // Cylinder boundary is at z = 2.0 - 0.4 = 1.6m -> distance should be 1.6m
+    expect(pointsCyl[0].z).toBeCloseTo(1.6, 1);
+    // Normal facing back towards sensor (-Z)
+    expect(pointsCyl[0].normal![2]).toBeCloseTo(-1, 1);
+
+    // Test Ramp Obstacle: ramp at (0, 2) rising in posZ from 0 to 0.4m
+    const rampObs = [{ x: 0, z: 2, width: 1.0, depth: 2.0, height: 0.4, shape: "ramp" as const, rampDirection: "posZ" as const }];
+    // Rover at (0, 0) at sensorHeight 0.5m tilted downwards -10°
+    const pointsRamp = scanRoom(6, 6, 0, 0, 90, -10, 1, 10, 0, 0.5, rampObs, 3, 10, 0, { includeNormals: true });
+    expect(pointsRamp.length).toBe(1);
+    // Ramp surface normal should have positive Y (upward) and negative Z (tilted back)
+    expect(pointsRamp[0].normal![1]).toBeGreaterThan(0.9);
+    expect(pointsRamp[0].normal![2]).toBeLessThan(0);
+  });
+
+  it("downsamples dense point clouds and filters duplicate voxels", async () => {
+    const { downsampleVoxelPoints, filterDuplicateVoxelPoints } = await import(
+      "@/sonaris/lib/sonaris-coverage"
+    );
+
+    // 10 points within a 2 cm radius (all fall inside the same 25 mm voxel)
+    const densePoints = Array.from({ length: 10 }, (_, i) => ({
+      x: 1.0 + i * 0.001,
+      y: 0.5 + i * 0.001,
+      z: 2.0 + i * 0.001
+    }));
+
+    const downsampled = downsampleVoxelPoints(densePoints, 0.025);
+    expect(downsampled.length).toBe(1);
+    expect(downsampled[0].x).toBeCloseTo(1.0, 2);
+
+    // Points in distinct voxels remain intact
+    const distinctPoints = [
+      { x: 0.0, y: 0.0, z: 0.0 },
+      { x: 0.1, y: 0.0, z: 0.0 },
+      { x: 0.2, y: 0.0, z: 0.0 }
+    ];
+    expect(downsampleVoxelPoints(distinctPoints, 0.025).length).toBe(3);
+
+    // filterDuplicateVoxelPoints ignores existing voxels
+    const existing = [{ x: 1.0, y: 0.5, z: 2.0 }];
+    const incoming = [
+      { x: 1.002, y: 0.501, z: 2.001 }, // duplicate
+      { x: 2.5, y: 0.5, z: 2.0 }         // new distinct voxel
+    ];
+    const filtered = filterDuplicateVoxelPoints(incoming, existing, 0.025);
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].x).toBeCloseTo(2.5, 2);
+  });
 });
