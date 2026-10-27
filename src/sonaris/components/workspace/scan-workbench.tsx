@@ -438,7 +438,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           0.22,
           currentRoom.obstacles,
           currentRoom.width,
-          currentRoom.depth
+          currentRoom.depth,
+          currentRoom
         );
         const arrived: RoverPose = { x: safeDest.x, z: safeDest.z, heading: finalHeading };
         setRoverPose(arrived);

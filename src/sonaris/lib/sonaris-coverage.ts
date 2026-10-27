@@ -958,7 +958,8 @@ export function resolveRoverCollision(
   radius = 0.22,
   obstacles: ScanObstacle[] = [],
   roomW = 10,
-  roomD = 8
+  roomD = 8,
+  room?: RoomEnvironment
 ): CollisionResolutionResult {
   let resolvedX = px;
   let resolvedZ = pz;
@@ -999,10 +1000,17 @@ export function resolveRoverCollision(
     contactObstacle = "South Arena Wall";
   }
 
+  const roverElev = room ? getRoomElevationAt(room, resolvedX, resolvedZ) : 0;
+
   // 2. Solid Internal Obstacles (Columns, Walls, Benches, Guardrails, Pit Voids)
   for (const o of obstacles) {
     const baseY = o.baseY ?? 0;
-    if (baseY >= 0.65 || o.shape === "ramp") continue; // High hangings or navigable terrain slopes
+    // High hangings when rover is on ground level
+    if (baseY >= 0.65 && roverElev < 0.35) continue;
+    // Navigable slopes and rollable curbs (<= 35mm step)
+    if (o.shape === "ramp" || o.category === "ramp" || o.category === "curb" || (o.height <= 0.035 && !o.isHole)) continue;
+    // Elevated platform deck when rover is elevated on or cresting the platform (roverElev >= 0.38m)
+    if (o.category === "platform" && roverElev >= 0.38) continue;
 
     if (o.shape === "cylinder") {
       const colR = o.radius ?? o.width / 2;
@@ -1093,14 +1101,18 @@ export function isPointCollisionFree(
   radius = 0.22,
   obstacles: ScanObstacle[] = [],
   roomW = 10,
-  roomD = 8
+  roomD = 8,
+  room?: RoomEnvironment
 ): boolean {
   const safeW = roomW / 2 - radius;
   const safeD = roomD / 2 - radius;
   if (Math.abs(px) > safeW || Math.abs(pz) > safeD) return false;
+  const roverElev = room ? getRoomElevationAt(room, px, pz) : 0;
   for (const o of obstacles) {
-    if ((o.baseY ?? 0) >= 0.65 || o.shape === "ramp") continue;
-    const { distance, isTraversable } = obstacleDistance2D(o, px, pz);
+    if ((o.baseY ?? 0) >= 0.65 && roverElev < 0.35) continue;
+    if (o.shape === "ramp" || o.category === "ramp" || o.category === "curb" || (o.height <= 0.035 && !o.isHole)) continue;
+    if (o.category === "platform" && roverElev >= 0.38) continue;
+    const { distance, isTraversable } = obstacleDistance2D(o, px, pz, roverElev);
     if (!isTraversable && distance < radius) return false;
   }
   return true;
@@ -1115,9 +1127,12 @@ export function obstacleIntersectsSegment(
   z1: number,
   x2: number,
   z2: number,
-  safetyMargin = 0.35
+  safetyMargin = 0.35,
+  roverElevation?: number
 ): boolean {
-  if ((o.baseY ?? 0) >= 0.65 || o.shape === "ramp") return false;
+  if ((o.baseY ?? 0) >= 0.65 && (roverElevation ?? 0) < 0.35) return false;
+  if (o.shape === "ramp" || o.category === "ramp" || o.category === "curb" || (o.height <= 0.035 && !o.isHole)) return false;
+  if (o.category === "platform" && (roverElevation ?? 0) >= 0.38) return false;
   if (o.shape === "cylinder") {
     const r = (o.radius ?? o.width / 2) + safetyMargin;
     const ldx = x2 - x1;
@@ -1192,18 +1207,42 @@ export function isLineClear(
   obstacles: ScanObstacle[],
   safetyMargin = 0.35,
   roomW = 20,
-  roomD = 20
+  roomD = 20,
+  room?: RoomEnvironment
 ): boolean {
   const halfW = roomW / 2 - 0.20;
   const halfD = roomD / 2 - 0.20;
   if (Math.abs(x1) > halfW || Math.abs(z1) > halfD || Math.abs(x2) > halfW || Math.abs(z2) > halfD) {
     return false;
   }
+  const e1 = room ? getRoomElevationAt(room, x1, z1) : 0;
+  const e2 = room ? getRoomElevationAt(room, x2, z2) : 0;
+  const roverElev = Math.min(e1, e2);
+
   for (let i = 0; i < obstacles.length; i++) {
-    if (obstacleIntersectsSegment(obstacles[i], x1, z1, x2, z2, safetyMargin)) {
+    if (obstacleIntersectsSegment(obstacles[i], x1, z1, x2, z2, safetyMargin, roverElev)) {
       return false;
     }
   }
+
+  // Check 2.5D elevation continuity: avoid sheer cliff drops or climbs without ramps (> 0.08m per step)
+  if (room) {
+    const dist = Math.hypot(x2 - x1, z2 - z1);
+    const steps = Math.max(2, Math.ceil(dist / 0.12));
+    let prevElev = e1;
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const px = x1 + t * (x2 - x1);
+      const pz = z1 + t * (z2 - z1);
+      if (getRoomTerrainAt(room, px, pz).type === "void") return false;
+      const currElev = getRoomElevationAt(room, px, pz);
+      if (Math.abs(currElev - prevElev) > 0.08) {
+        return false;
+      }
+      prevElev = currElev;
+    }
+  }
+
   return true;
 }
 
@@ -1229,7 +1268,8 @@ export function smoothThetaPath(
       getRoomTerrainAt(room, x1, z1).costWeight,
       getRoomTerrainAt(room, x2, z2).costWeight
     );
-    const steps = 8;
+    const steps = 10;
+    let prevElev = getRoomElevationAt(room, x1, z1);
     for (let s = 1; s < steps; s++) {
       const t = s / steps;
       const px = x1 + t * (x2 - x1);
@@ -1238,6 +1278,11 @@ export function smoothThetaPath(
       if (terr.type === "void" || terr.costWeight > maxCost * 1.5) {
         return false;
       }
+      const currElev = getRoomElevationAt(room, px, pz);
+      if (Math.abs(currElev - prevElev) > 0.08) {
+        return false;
+      }
+      prevElev = currElev;
     }
     return true;
   };
@@ -1254,7 +1299,8 @@ export function smoothThetaPath(
           obstacles,
           safetyMargin,
           roomW,
-          roomD
+          roomD,
+          room
         ) &&
         isSegmentTerrainSafe(
           path[anchor][0],
@@ -1299,10 +1345,14 @@ export function findThetaStarPath(
   const validGz = Math.max(-clampD, Math.min(clampD, gz));
 
   // Direct line-of-sight shortcut if straight path is clear and not bypassing terrain cost evaluation
-  const directClear = isLineClear(validSx, validSz, validGx, validGz, obstacles, safetyMargin, roomW, roomD);
+  const directClear = isLineClear(validSx, validSz, validGx, validGz, obstacles, safetyMargin, roomW, roomD, room);
   const startTerrain = room ? getRoomTerrainAt(room, validSx, validSz) : null;
   const goalTerrain = room ? getRoomTerrainAt(room, validGx, validGz) : null;
-  const shouldEvaluateTerrain = room && startTerrain?.costWeight === 1.0 && goalTerrain?.costWeight === 1.0;
+  const startElev = room ? getRoomElevationAt(room, validSx, validSz) : 0;
+  const goalElev = room ? getRoomElevationAt(room, validGx, validGz) : 0;
+  const shouldEvaluateTerrain = room && (
+    startTerrain?.costWeight !== 1.0 || goalTerrain?.costWeight !== 1.0 || Math.abs(startElev - goalElev) > 0.05
+  );
   if (directClear && !shouldEvaluateTerrain) {
     return [[sx, sz], [validGx, validGz]];
   }
@@ -1325,14 +1375,13 @@ export function findThetaStarPath(
   const toZ = (r: number) => Number((minZ + r * cellSize).toFixed(3));
   const toIndex = (c: number, r: number) => r * cols + c;
 
-  // Filter ground obstacles & holes that impede the rover chassis (baseY < 0.65m)
-  const activeObstacles = obstacles.filter((o) => (o.baseY ?? 0) < 0.65);
-
   const isBlockedCoord = (x: number, z: number, margin = safetyMargin): boolean => {
     if (Math.abs(x) > halfW || Math.abs(z) > halfD) return true;
     if (room && getRoomTerrainAt(room, x, z).type === "void") return true;
-    for (let i = 0; i < activeObstacles.length; i++) {
-      const { distance, isTraversable } = obstacleDistance2D(activeObstacles[i], x, z);
+    const elev = room ? getRoomElevationAt(room, x, z) : 0;
+    for (let i = 0; i < obstacles.length; i++) {
+      const o = obstacles[i];
+      const { distance, isTraversable } = obstacleDistance2D(o, x, z, elev);
       if (!isTraversable && distance <= margin) return true;
     }
     return false;
@@ -1471,6 +1520,15 @@ export function findThetaStarPath(
       if (dc !== 0 && dr !== 0) {
         if (grid[toIndex(curC + dc, curR)] === 1 || grid[toIndex(curC, curR + dr)] === 1) {
           continue;
+        }
+      }
+
+      // 2.5D Elevation Transition Check: prohibit jumping sheer cliffs (> 0.08m per 12cm cell)
+      if (room) {
+        const curElev = getRoomElevationAt(room, toX(curC), toZ(curR));
+        const nextElev = getRoomElevationAt(room, toX(nc), toZ(nr));
+        if (Math.abs(nextElev - curElev) > 0.08) {
+          continue; // Sheer vertical drop-off cliff or unramped platform drop!
         }
       }
 
@@ -2281,8 +2339,10 @@ export function scanDrivingCorridor(
       // Check physical obstacles or holes
       for (const obs of obstacles) {
         const obsBaseY = obs.baseY ?? 0;
-        if (obsBaseY >= 0.65) continue; // High-hanging obstacles above 0.65m clear rover chassis
-        if (obs.shape === "ramp") continue; // Navigable terrain slope
+        const roverElev = getRoomElevationAt(ROOM_PRESETS[0], x, z);
+        if (obsBaseY >= 0.65 && roverElev < 0.35) continue; // High-hanging obstacles clear chassis on ground
+        if (obs.shape === "ramp" || obs.category === "ramp" || obs.category === "curb" || (obs.height <= 0.035 && !obs.isHole)) continue;
+        if (obs.category === "platform" && roverElev >= 0.38) continue; // On platform deck
 
         // Relative vector to obstacle center: if rover is already past it and driving away, skip
         const toObsX = obs.x - x;
