@@ -604,7 +604,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             0.22,
             currentRoom.obstacles,
             currentRoom.width,
-            currentRoom.depth
+            currentRoom.depth,
+            currentRoom
           );
           currentX = collision.x;
           currentZ = collision.z;
@@ -696,7 +697,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             0.22,
             currentRoom.obstacles,
             currentRoom.width,
-            currentRoom.depth
+            currentRoom.depth,
+            currentRoom
           );
           const arrived: RoverPose = {
             x: safeDest.x,
@@ -949,7 +951,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       0.28,
       currentRoom.obstacles,
       currentRoom.width,
-      currentRoom.depth
+      currentRoom.depth,
+      currentRoom
     );
     const clampedPt: [number, number] = [resolved.x, resolved.z];
     setWaypoints((prev) => {
@@ -1161,7 +1164,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         0.28,
         currentRoom.obstacles,
         currentRoom.width,
-        currentRoom.depth
+        currentRoom.depth,
+        currentRoom
       );
 
       // Merge physical arena obstacles with any dynamically perceived point cloud obstacles
