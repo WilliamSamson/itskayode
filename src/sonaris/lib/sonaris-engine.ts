@@ -372,6 +372,8 @@ export interface ScanObstacle {
   shape?: "box" | "cylinder" | "ramp";
   radius?: number;
   rampDirection?: "posZ" | "negZ" | "posX" | "negX";
+  category?: "ramp" | "platform" | "guardrail" | "column" | "wall" | "bench" | "curb" | "void";
+  name?: string;
 }
 /** Slamtec RPLIDAR S2 DToF physical specifications */
 export const RPLIDAR_S2_SPECS = {
@@ -437,7 +439,7 @@ export function scanRoom(
         ![o.x, o.z, o.width, o.depth, o.height].every(finite) ||
         o.width <= 0 ||
         o.depth <= 0 ||
-        o.height <= 0
+        (!(o as { isHole?: boolean }).isHole && o.height <= 0)
     ) ||
     roomWidth <= 0 ||
     roomDepth <= 0 ||
@@ -546,6 +548,7 @@ export function scanRoom(
     }
 
     for (const o of obstacles) {
+      if ((o as { isHole?: boolean }).isHole || o.height <= 0) continue;
       const baseY = o.baseY ?? 0;
       const isDark = (o as { isDark?: boolean }).isDark ?? false;
 

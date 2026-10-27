@@ -5,7 +5,12 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { assemblyParts } from "@/sonaris/lib/sonaris-assembly";
 import type { ScanPoint, ScanObstacle } from "@/sonaris/lib/sonaris-engine";
-import { getRoomAttitudeAt, type RoomEnvironment } from "@/sonaris/lib/sonaris-coverage";
+import {
+  getRoomAttitudeAt,
+  getRoomElevationAt,
+  resolveRoverCollision,
+  type RoomEnvironment
+} from "@/sonaris/lib/sonaris-coverage";
 import { createAssemblyModel } from "./assembly-models";
 
 export interface ProbedPoint {
@@ -64,10 +69,16 @@ const PLANE_PALETTE = [
 
 // Pre-allocated static colors for zero-allocation point cloud streaming
 const STATIC_TEMP_COLOR = new THREE.Color();
-const COLOR_FLOOR_RED = new THREE.Color("#f43f5e");
-const COLOR_WARM_AMBER = new THREE.Color("#f59e0b");
-const COLOR_LIGHT_TITANIUM = new THREE.Color("#f8fafc");
 const COLOR_LASER_RED = new THREE.Color("#ff3333");
+
+// Calibrated robotic elevation colormap for distinct terrain & obstacle heights
+const COLOR_ELEV_VOID = new THREE.Color("#ef4444");      // Below floor: Sump pit / void hazard (-0.40m)
+const COLOR_ELEV_FLOOR = new THREE.Color("#38bdf8");     // Floor datum: Level runway floor (0.0m)
+const COLOR_ELEV_BUMP = new THREE.Color("#f59e0b");      // Micro-relief: Washboard bumps, gravel, curb (+0.02 - 0.04m)
+const COLOR_ELEV_SLOPE = new THREE.Color("#10b981");     // Incline: Navigable climbing/descent ramps (+0.05 - 0.40m)
+const COLOR_ELEV_PLATFORM = new THREE.Color("#06b6d4");  // Mezzanine: Elevated platform deck (+0.45m)
+const COLOR_ELEV_MIDWALL = new THREE.Color("#a855f7");   // Low fixtures: Benches, columns, partition walls (+0.55 - 1.4m)
+const COLOR_ELEV_HIGHWALL = new THREE.Color("#f8fafc");  // Upper enclosure: Upper boundary perimeter walls (>1.4m)
 
 function disposeObject(object: THREE.Object3D) {
   if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
@@ -344,6 +355,19 @@ export default function ScanStage({
     }
     roverGroup.add(scaledChassis);
 
+    // Rover Physical Collision Hitbox Envelope (0.22m radius / 260x340mm bumper margin)
+    const hitboxGeo = new THREE.RingGeometry(0.215, 0.225, 32);
+    const hitboxMat = new THREE.MeshBasicMaterial({
+      color: 0x06b6d4, // Cyan collision bumper ring
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.75
+    });
+    const hitboxMesh = new THREE.Mesh(hitboxGeo, hitboxMat);
+    hitboxMesh.rotation.x = -Math.PI / 2;
+    hitboxMesh.position.y = 0.02; // Just above ground plane
+    roverGroup.add(hitboxMesh);
+
     // Compact gimbal mount collar linking the rover deck to the LiDAR tilt head
     const collarHeight = Math.max(0.015, sensorHeight - 0.23);
     const mast = new THREE.Mesh(
@@ -374,7 +398,7 @@ export default function ScanStage({
       color: 0xff2222,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.18,
       depthWrite: false
     });
     const fanMesh = new THREE.Mesh(fanGeo, fanMat);
@@ -390,16 +414,16 @@ export default function ScanStage({
     );
     const edgeLine = new THREE.Line(
       edgeGeo,
-      new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.95 })
+      new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.85 })
     );
     laserFan.add(edgeLine);
 
-    // Oscillating Laser Beam Ray
+    // Oscillating Laser Beam Ray with bright optical core
     const beamGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(3.8, 0, 0)
     ]);
-    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff1111, linewidth: 3 }));
+    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 3 }));
     laserFan.add(laserBeam);
 
     // 3. Dynamic Forward Perception Corridor (Active Ground Path Scanning)
@@ -546,8 +570,17 @@ export default function ScanStage({
       const floorHits = raycaster.intersectObject(floorMesh);
       if (floorHits.length > 0) {
         const pt = floorHits[0].point;
-        const clampedX = Number(Math.max(-roomWidth / 2 + 0.35, Math.min(roomWidth / 2 - 0.35, pt.x)).toFixed(2));
-        const clampedZ = Number(Math.max(-roomDepth / 2 + 0.35, Math.min(roomDepth / 2 - 0.35, pt.z)).toFixed(2));
+        // Resolve click against physical boundaries & obstacle hitboxes
+        const resolved = resolveRoverCollision(
+          pt.x,
+          pt.z,
+          0.28,
+          currentRoom?.obstacles ?? obstacles,
+          roomWidth,
+          roomDepth
+        );
+        const clampedX = Number(resolved.x.toFixed(2));
+        const clampedZ = Number(resolved.z.toFixed(2));
 
         if (interactModeRef.current === "waypoint" && onAddWaypointRef.current) {
           onAddWaypointRef.current([clampedX, clampedZ]);
@@ -645,14 +678,14 @@ export default function ScanStage({
     roomGroup.add(grid);
 
     if (showRoomBounds) {
-      // Corner elevation tick columns
+      // Corner structural columns
       const cornerTicks = [
         [halfW, -halfD],
         [halfW, halfD],
         [-halfW, -halfD],
         [-halfW, halfD]
       ];
-      const postMat = new THREE.LineBasicMaterial({ color: 0x5a6275, transparent: true, opacity: 0.7 });
+      const postMat = new THREE.LineBasicMaterial({ color: 0x5a6275, transparent: true, opacity: 0.85 });
       cornerTicks.forEach(([cx, cz]) => {
         const postGeo = new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(cx, 0, cz),
@@ -660,73 +693,222 @@ export default function ScanStage({
         ]);
         roomGroup.add(new THREE.Line(postGeo, postMat));
       });
+
+      // Solid Perimeter Arena Boundary Walls (0.80m high solid safety boundary barriers)
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: 0x12141c,
+        roughness: 0.5,
+        metalness: 0.75
+      });
+      const wallCapMat = new THREE.LineBasicMaterial({
+        color: 0x64748b, // Slate steel wall cap line
+        transparent: true,
+        opacity: 0.95
+      });
+      const wallThickness = 0.12;
+      const wallHeight = 0.80;
+
+      // North Boundary Wall (-halfD)
+      const nWallGeo = new THREE.BoxGeometry(roomWidth + wallThickness * 2, wallHeight, wallThickness);
+      const nWallMesh = new THREE.Mesh(nWallGeo, wallMat);
+      nWallMesh.position.set(0, wallHeight / 2, -halfD - wallThickness / 2);
+      nWallMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(nWallGeo), wallCapMat));
+      roomGroup.add(nWallMesh);
+
+      // South Boundary Wall (+halfD)
+      const sWallGeo = new THREE.BoxGeometry(roomWidth + wallThickness * 2, wallHeight, wallThickness);
+      const sWallMesh = new THREE.Mesh(sWallGeo, wallMat);
+      sWallMesh.position.set(0, wallHeight / 2, halfD + wallThickness / 2);
+      sWallMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(sWallGeo), wallCapMat));
+      roomGroup.add(sWallMesh);
+
+      // West Boundary Wall (-halfW)
+      const wWallGeo = new THREE.BoxGeometry(wallThickness, wallHeight, roomDepth);
+      const wWallMesh = new THREE.Mesh(wWallGeo, wallMat);
+      wWallMesh.position.set(-halfW - wallThickness / 2, wallHeight / 2, 0);
+      wWallMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(wWallGeo), wallCapMat));
+      roomGroup.add(wWallMesh);
+
+      // East Boundary Wall (+halfW)
+      const eWallGeo = new THREE.BoxGeometry(wallThickness, wallHeight, roomDepth);
+      const eWallMesh = new THREE.Mesh(eWallGeo, wallMat);
+      eWallMesh.position.set(halfW + wallThickness / 2, wallHeight / 2, 0);
+      eWallMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(eWallGeo), wallCapMat));
+      roomGroup.add(eWallMesh);
     }
 
     // Physical Obstacles & Floor Holes/Voids
-    const obsMat = new THREE.MeshStandardMaterial({ color: 0x181a24, roughness: 0.45, metalness: 0.8 });
-    const holeMat = new THREE.MeshBasicMaterial({ color: 0x030406 });
+    const holeMat = new THREE.MeshBasicMaterial({ color: 0x020305 });
     const holeEdgeMat = new THREE.LineBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.95 });
 
+    // Category-specific materials to clearly distinguish physical feature types
+    const platformMat = new THREE.MeshStandardMaterial({ color: 0x141f2d, roughness: 0.55, metalness: 0.4 });
+    const platformEdgeMat = new THREE.LineBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.95 });
+
+    const rampMat = new THREE.MeshStandardMaterial({ color: 0x12261a, roughness: 0.65, metalness: 0.25 });
+    const rampEdgeMat = new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.95 });
+    const rampTreadMat = new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.85 });
+
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0x2b2514, roughness: 0.85, metalness: 0.1 });
+    const curbEdgeMat = new THREE.LineBasicMaterial({ color: 0xeab308, transparent: true, opacity: 0.95 });
+
+    const wallObstacleMat = new THREE.MeshStandardMaterial({ color: 0x171922, roughness: 0.7, metalness: 0.4 });
+    const wallObstacleEdgeMat = new THREE.LineBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.92 });
+
+    const columnMat = new THREE.MeshStandardMaterial({ color: 0x162130, roughness: 0.5, metalness: 0.6 });
+    const columnEdgeMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.92 });
+
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x202433, roughness: 0.4, metalness: 0.7 });
+    const benchEdgeMat = new THREE.LineBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.92 });
+
+    const defaultObsMat = new THREE.MeshStandardMaterial({ color: 0x181a24, roughness: 0.45, metalness: 0.8 });
+
     for (const obs of obstacles) {
-      const isHole = (obs as { isHole?: boolean }).isHole || obs.height <= 0;
+      const isHole = (obs as { isHole?: boolean }).isHole || obs.height <= 0 || obs.category === "void";
       if (isHole) {
-        // Floor Void / Hole Pit Cutout
-        const pitDepth = 0.25;
+        // Floor Void / Hole Pit Cutout (e.g. sump pit at -0.40m)
+        const pitDepth = 0.40;
         const pitGeo = new THREE.BoxGeometry(obs.width, pitDepth, obs.depth);
         const pitMesh = new THREE.Mesh(pitGeo, holeMat);
         pitMesh.position.set(obs.x, -pitDepth / 2, obs.z);
         pitMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(pitGeo), holeEdgeMat));
         obstaclesGroup.add(pitMesh);
-      } else if (obs.shape === "cylinder") {
+      } else if (obs.shape === "cylinder" || obs.category === "column") {
         const baseY = obs.baseY ?? 0;
         const radius = obs.radius ?? obs.width / 2;
         const geo = new THREE.CylinderGeometry(radius, radius, obs.height, 32);
-        const mesh = new THREE.Mesh(geo, obsMat);
+        const mesh = new THREE.Mesh(geo, columnMat);
         mesh.position.set(obs.x, baseY + obs.height / 2, obs.z);
-        const cylEdgeMat = new THREE.LineBasicMaterial({
-          color: 0x38bdf8,
-          transparent: true,
-          opacity: 0.92
-        });
-        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), cylEdgeMat));
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), columnEdgeMat));
         obstaclesGroup.add(mesh);
-      } else if (obs.shape === "ramp") {
+      } else if (obs.shape === "ramp" || obs.category === "ramp") {
         const baseY = obs.baseY ?? 0;
         const dir = obs.rampDirection ?? "posZ";
         const geo = createRampGeometry(obs.width, obs.height, obs.depth, dir);
-        const mesh = new THREE.Mesh(geo, obsMat);
+        const mesh = new THREE.Mesh(geo, rampMat);
         mesh.position.set(obs.x, baseY, obs.z);
-        const rampEdgeMat = new THREE.LineBasicMaterial({
-          color: 0x10b981, // Emerald green outline for navigable climbing ramps
-          transparent: true,
-          opacity: 0.95
-        });
         mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), rampEdgeMat));
+
+        // Add transverse traction tread markings across the sloped ramp face
+        const treadStep = 0.22;
+        const span = dir === "posZ" || dir === "negZ" ? obs.depth : obs.width;
+        const numTreads = Math.max(2, Math.floor(span / treadStep));
+        const treadPositions: number[] = [];
+        const halfW = obs.width / 2;
+        const halfD = obs.depth / 2;
+
+        for (let t = 1; t < numTreads; t++) {
+          const s = t / numTreads;
+          const yTread = s * obs.height + 0.003;
+          if (dir === "posZ") {
+            const zTread = -halfD + s * obs.depth;
+            treadPositions.push(-halfW * 0.90, yTread, zTread, halfW * 0.90, yTread, zTread);
+          } else if (dir === "negZ") {
+            const zTread = halfD - s * obs.depth;
+            treadPositions.push(-halfW * 0.90, yTread, zTread, halfW * 0.90, yTread, zTread);
+          } else if (dir === "posX") {
+            const xTread = -halfW + s * obs.width;
+            treadPositions.push(xTread, yTread, -halfD * 0.90, xTread, yTread, halfD * 0.90);
+          } else {
+            const xTread = halfW - s * obs.width;
+            treadPositions.push(xTread, yTread, -halfD * 0.90, xTread, yTread, halfD * 0.90);
+          }
+        }
+
+        if (treadPositions.length > 0) {
+          const treadGeo = new THREE.BufferGeometry();
+          treadGeo.setAttribute("position", new THREE.Float32BufferAttribute(treadPositions, 3));
+          mesh.add(new THREE.LineSegments(treadGeo, rampTreadMat));
+        }
+
         obstaclesGroup.add(mesh);
       } else {
         const baseY = obs.baseY ?? 0;
         const geo = new THREE.BoxGeometry(obs.width, obs.height, obs.depth);
-        const mesh = new THREE.Mesh(geo, obsMat);
+        let selectedMat = defaultObsMat;
+        let selectedEdgeMat = columnEdgeMat;
+
+        if (obs.category === "platform") {
+          selectedMat = platformMat;
+          selectedEdgeMat = platformEdgeMat;
+        } else if (obs.category === "curb") {
+          selectedMat = curbMat;
+          selectedEdgeMat = curbEdgeMat;
+        } else if (obs.category === "wall") {
+          selectedMat = wallObstacleMat;
+          selectedEdgeMat = wallObstacleEdgeMat;
+        } else if (obs.category === "bench") {
+          selectedMat = benchMat;
+          selectedEdgeMat = benchEdgeMat;
+        } else {
+          // Distinguish high-hangs (violet/indigo), low-hangs/shelves (warm amber), and ground fixtures
+          const edgeColor = baseY >= 1.2 ? 0xa78bfa : baseY > 0 ? 0xf59e0b : 0x38bdf8;
+          selectedEdgeMat = new THREE.LineBasicMaterial({
+            color: edgeColor,
+            transparent: true,
+            opacity: 0.92
+          });
+        }
+
+        const mesh = new THREE.Mesh(geo, selectedMat);
         mesh.position.set(obs.x, baseY + obs.height / 2, obs.z);
-        // Distinguish high-hangs (violet/indigo), low-hangs/shelves (warm amber), and ground pillars (steel-blue)
-        const edgeColor =
-          baseY >= 1.2 ? 0xa78bfa : baseY > 0 ? 0xf59e0b : 0x38bdf8;
-        const customEdgeMat = new THREE.LineBasicMaterial({
-          color: edgeColor,
-          transparent: true,
-          opacity: 0.92
-        });
-        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), customEdgeMat));
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), selectedEdgeMat));
         obstaclesGroup.add(mesh);
       }
     }
 
-    // Blank world by default: obstaclesGroup is only visible if showGroundTruth is enabled.
-    // The rover's active LiDAR sweep and 3D point cloud reveal the real environment!
-    obstaclesGroup.visible = showGroundTruth;
+    // Physical Terrain Features: Washboard bumps course and gravel bed
+    if (currentRoom?.terrainFeatures) {
+      for (const feat of currentRoom.terrainFeatures) {
+        if (feat.type === "bumps") {
+          const bWave = feat.bumpWavelengthM ?? 0.32;
+          const bHeight = feat.bumpHeightM ?? 0.020;
+          const numBars = Math.floor(feat.depth / bWave);
+          const bumpMat = new THREE.MeshStandardMaterial({
+            color: 0x221f1a,
+            roughness: 0.6,
+            metalness: 0.2
+          });
+          const bumpEdgeMat = new THREE.LineBasicMaterial({
+            color: 0xf59e0b, // Warm amber for washboard test bumps
+            transparent: true,
+            opacity: 0.85
+          });
+
+          for (let k = 0; k < numBars; k++) {
+            const barZ = (feat.z - feat.depth / 2) + (k + 0.5) * bWave;
+            const barGeo = new THREE.CylinderGeometry(bHeight, bHeight, feat.width, 16);
+            const barMesh = new THREE.Mesh(barGeo, bumpMat);
+            barMesh.rotation.z = Math.PI / 2;
+            barMesh.position.set(feat.x, bHeight / 2, barZ);
+            barMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(barGeo, 30), bumpEdgeMat));
+            obstaclesGroup.add(barMesh);
+          }
+        } else if (feat.type === "gravel") {
+          const gravelBaseGeo = new THREE.BoxGeometry(feat.width, 0.012, feat.depth);
+          const gravelMat = new THREE.MeshStandardMaterial({
+            color: 0x2a241d,
+            roughness: 0.95,
+            metalness: 0.05
+          });
+          const gravelMesh = new THREE.Mesh(gravelBaseGeo, gravelMat);
+          gravelMesh.position.set(feat.x, 0.006, feat.z);
+          const gravelEdgeMat = new THREE.LineBasicMaterial({
+            color: 0xd97706, // Amber-bronze perimeter kerb border
+            transparent: true,
+            opacity: 0.9
+          });
+          gravelMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(gravelBaseGeo), gravelEdgeMat));
+          obstaclesGroup.add(gravelMesh);
+        }
+      }
+    }
+
+    // Solid world architecture: obstaclesGroup is always visible so boundaries and hitboxes are real
+    obstaclesGroup.visible = true;
 
     wake();
-  }, [roomWidth, roomDepth, roomHeight, showRoomBounds, obstacles, showGroundTruth]);
+  }, [roomWidth, roomDepth, roomHeight, showRoomBounds, obstacles, currentRoom, showGroundTruth]);
 
   // Update Trajectory & Waypoint Paths
   useEffect(() => {
@@ -738,7 +920,10 @@ export default function ScanStage({
     // 1. Render Plotted Route Waypoints & Stems
     if (waypoints && waypoints.length > 0) {
       const allWaypoints = [[roverPose.x, roverPose.z], ...waypoints].map(
-        ([x, z]) => new THREE.Vector3(x, 0.012, z)
+        ([x, z]) => {
+          const elev = currentRoom ? getRoomElevationAt(currentRoom, x, z) : 0;
+          return new THREE.Vector3(x, elev + 0.012, z);
+        }
       );
       const routeGeo = new THREE.BufferGeometry().setFromPoints(allWaypoints);
       const routeLine = new THREE.Line(
@@ -755,6 +940,7 @@ export default function ScanStage({
       waypoints.forEach(([wx, wz], idx) => {
         const isActive = idx === activeWaypointIndex;
         const color = isActive ? 0xff4d4d : 0xd49520;
+        const elev = currentRoom ? getRoomElevationAt(currentRoom, wx, wz) : 0;
 
         const ringGeo = new THREE.RingGeometry(0.05, 0.13, 24);
         const ringMat = new THREE.MeshBasicMaterial({
@@ -765,7 +951,7 @@ export default function ScanStage({
         });
         const ringMesh = new THREE.Mesh(ringGeo, ringMat);
         ringMesh.rotation.x = -Math.PI / 2;
-        ringMesh.position.set(wx, 0.006, wz);
+        ringMesh.position.set(wx, elev + 0.006, wz);
         pathGroup.add(ringMesh);
 
         // Center Pip
@@ -773,13 +959,13 @@ export default function ScanStage({
         const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
         const dotMesh = new THREE.Mesh(dotGeo, dotMat);
         dotMesh.rotation.x = -Math.PI / 2;
-        dotMesh.position.set(wx, 0.007, wz);
+        dotMesh.position.set(wx, elev + 0.007, wz);
         pathGroup.add(dotMesh);
 
         // Vertical Pin Stem
         const pinGeo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(wx, 0.007, wz),
-          new THREE.Vector3(wx, 0.22, wz)
+          new THREE.Vector3(wx, elev + 0.007, wz),
+          new THREE.Vector3(wx, elev + 0.22, wz)
         ]);
         const pinMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 });
         pathGroup.add(new THREE.Line(pinGeo, pinMat));
@@ -788,7 +974,10 @@ export default function ScanStage({
 
     // 2. Render Live Kinematics Execution Path
     if (navPath.length > 1) {
-      const pts = navPath.map(([x, z]) => new THREE.Vector3(x, 0.015, z));
+      const pts = navPath.map(([x, z]) => {
+        const elev = currentRoom ? getRoomElevationAt(currentRoom, x, z) : 0;
+        return new THREE.Vector3(x, elev + 0.015, z);
+      });
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2 }));
       pathGroup.add(line);
@@ -846,7 +1035,7 @@ export default function ScanStage({
       color: 0xff2222,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.18,
       depthWrite: false
     });
     const fanMesh = new THREE.Mesh(fanGeo, fanMat);
@@ -868,16 +1057,16 @@ export default function ScanStage({
     const edgeGeo = new THREE.BufferGeometry().setFromPoints(arcPts);
     const edgeLine = new THREE.Line(
       edgeGeo,
-      new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.95 })
+      new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.85 })
     );
     laserFan.add(edgeLine);
 
-    // Oscillating Laser Beam Ray
+    // Oscillating Laser Beam Ray with bright optical core
     const beamGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(3.8, 0, 0)
     ]);
-    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff1111, linewidth: 3 }));
+    const laserBeam = new THREE.Line(beamGeo, new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 3 }));
     laserFan.add(laserBeam);
     rt.laserBeam = laserBeam;
 
@@ -1003,11 +1192,25 @@ export default function ScanStage({
         posArray[i3 + 2] = p.z;
 
         if (colorMode === "elevation") {
-          const t = Math.max(0, Math.min(1, p.y / Math.max(0.1, roomHeight)));
-          if (t < 0.5) {
-            STATIC_TEMP_COLOR.copy(COLOR_FLOOR_RED).lerp(COLOR_WARM_AMBER, t * 2);
+          const y = p.y;
+          if (y < -0.02) {
+            STATIC_TEMP_COLOR.copy(COLOR_ELEV_VOID);
+          } else if (y < 0.015) {
+            STATIC_TEMP_COLOR.copy(COLOR_ELEV_FLOOR);
+          } else if (y < 0.045) {
+            const u = (y - 0.015) / 0.030;
+            STATIC_TEMP_COLOR.copy(COLOR_ELEV_BUMP).lerp(COLOR_ELEV_SLOPE, u * 0.25);
+          } else if (y < 0.40) {
+            const u = (y - 0.045) / (0.40 - 0.045);
+            STATIC_TEMP_COLOR.copy(COLOR_ELEV_SLOPE).lerp(COLOR_ELEV_PLATFORM, u);
+          } else if (y < 0.55) {
+            STATIC_TEMP_COLOR.copy(COLOR_ELEV_PLATFORM);
+          } else if (y < 1.40) {
+            const u = (y - 0.55) / (1.40 - 0.55);
+            STATIC_TEMP_COLOR.copy(COLOR_ELEV_MIDWALL).lerp(COLOR_ELEV_HIGHWALL, u * 0.4);
           } else {
-            STATIC_TEMP_COLOR.copy(COLOR_WARM_AMBER).lerp(COLOR_LIGHT_TITANIUM, (t - 0.5) * 2);
+            const u = Math.min(1, (y - 1.40) / Math.max(0.5, (roomHeight ?? 3.0) - 1.40));
+            STATIC_TEMP_COLOR.copy(COLOR_ELEV_MIDWALL).lerp(COLOR_ELEV_HIGHWALL, 0.4 + u * 0.6);
           }
         } else if (colorMode === "laser") {
           STATIC_TEMP_COLOR.copy(COLOR_LASER_RED);

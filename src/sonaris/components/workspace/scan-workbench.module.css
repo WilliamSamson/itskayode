@@ -68,6 +68,33 @@
   background: rgba(153, 31, 31, 0.08);
 }
 
+/* Feature Elevation & Metrology Legend */
+.legendStrip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 5px 14px;
+  background: var(--sonaris-viewport);
+  border-bottom: 1px solid var(--sonaris-border);
+  font-size: 10px;
+  color: var(--sonaris-studio-muted);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.legendChip {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
 .actionBtnPrimary {
   background: var(--sonaris-studio-ink);
   color: var(--sonaris-ink);

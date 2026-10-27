@@ -22,7 +22,10 @@ import {
   type TrajectoryPoint,
   getRoomElevationAt,
   getRoomAttitudeAt,
-  filterDuplicateVoxelPoints
+  getRoomTerrainAt,
+  resolveRoverCollision,
+  filterDuplicateVoxelPoints,
+  wheelSpeedsToRPMs
 } from "@/sonaris/lib/sonaris-coverage";
 import type { RoverPose } from "./scan-stage";
 import styles from "./scan-workbench.module.css";
@@ -60,19 +63,27 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   const reducedMotion = useReducedMotion();
 
   // Environment and Pose
-  const [selectedRoomId, setSelectedRoomId] = useState<RoomEnvironment["id"]>("chamber");
+  const [selectedRoomId, setSelectedRoomId] = useState<RoomEnvironment["id"]>("proving_ground");
   const currentRoom = useMemo<RoomEnvironment>(
     () => ROOM_PRESETS.find((r) => r.id === selectedRoomId) || ROOM_PRESETS[0],
     [selectedRoomId]
   );
 
-  const [roverPose, setRoverPose] = useState<RoverPose>({ x: 0, z: 0, heading: 0 });
-  const [odometryTrack, setOdometryTrack] = useState<[number, number][]>([[0, 0]]);
+  const [roverPose, setRoverPose] = useState<RoverPose>({ x: 0, z: -2.4, heading: 90 });
+  const [odometryTrack, setOdometryTrack] = useState<[number, number][]>([[0, -2.4]]);
   const [wheelRPMs, setWheelRPMs] = useState<[number, number, number, number]>([0, 0, 0, 0]);
   const [tilt, setTilt] = useState<number>(() => initial?.tilt ?? 0);
   const [points, setPoints] = useState<ScanPoint[]>(() => initial?.points ?? []);
   const [latestPoints, setLatestPoints] = useState<ScanPoint[]>(() => initial?.latest ?? []);
   const [steps, setSteps] = useState<number>(initial?.steps ?? 0);
+
+  const commitVoxelPoints = useCallback((incoming: ScanPoint[]) => {
+    if (incoming.length === 0) return;
+    setPoints((prev) => {
+      const fresh = filterDuplicateVoxelPoints(incoming, prev, 0.025);
+      return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
+    });
+  }, []);
 
   const [operationState, setOperationState] = useState<
     "idle" | "transit" | "settle" | "tilt_record" | "gap_evaluate"
@@ -94,7 +105,24 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     initial?.scanMessage ?? "Survey ready. Click on floor to plot route waypoints, then execute step-and-settle scan."
   );
 
-  const [activeInspectorTab, setActiveInspectorTab] = useState<"acquisition" | "slices" | "specs">("acquisition");
+  type InspectorTabId = "acquisition" | "slices" | "specs";
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTabId>("acquisition");
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("sonaris:scan-inspector-tab") as InspectorTabId;
+      if (stored === "acquisition" || stored === "slices" || stored === "specs") {
+        setActiveInspectorTab(stored);
+      }
+    } catch {}
+  }, []);
+
+  const handleSelectInspectorTab = useCallback((tabId: InspectorTabId) => {
+    setActiveInspectorTab(tabId);
+    try {
+      localStorage.setItem("sonaris:scan-inspector-tab", tabId);
+    } catch {}
+  }, []);
   const [displayMode] = useState<"cloud" | "split" | "slice">("cloud");
   const [registrationMode, setRegistrationMode] = useState<"slam_registered" | "raw_odometry">("slam_registered");
   const [icpResidual, setIcpResidual] = useState<number | null>(null);
@@ -194,6 +222,41 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     onPointCount?.(points.length);
   }, [points.length, onPointCount]);
 
+  // Acquire baseline 0° level slice on load/room reset so 3D laser points are immediately visible
+  useEffect(() => {
+    if (points.length === 0) {
+      const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
+      const elev = getRoomElevationAt(currentRoom, roverPose.x, roverPose.z);
+      const initialSlice = scanRoom(
+        currentRoom.width,
+        currentRoom.depth,
+        roverPose.x,
+        roverPose.z,
+        roverPose.heading,
+        0,
+        scanAperture,
+        30,
+        0.008,
+        FIXED_SENSOR_HEIGHT + elev,
+        currentRoom.obstacles,
+        currentRoom.height,
+        scanAperture,
+        fovStart,
+        {
+          opticalOffset: [0.02, 0.018],
+          minBlindRange: 0.05,
+          reflectivityCutoff: true,
+          enableGrazingDropouts: true,
+          useGaussianNoise: true
+        }
+      );
+      if (initialSlice.length > 0) {
+        commitVoxelPoints(initialSlice);
+        setLatestPoints(initialSlice);
+      }
+    }
+  }, [currentRoom, roverPose.x, roverPose.z, roverPose.heading, scanAperture, commitVoxelPoints, points.length]);
+
   const cancelOperations = useCallback(() => {
     if (sweepTimerRef.current !== null) {
       clearInterval(sweepTimerRef.current);
@@ -224,8 +287,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
       setLatestPoints([]);
       setSteps(0);
       sweepStepRef.current = 0;
-      setRoverPose({ x: 0, z: 0, heading: 0 });
-      setOdometryTrack([[0, 0]]);
+      setRoverPose({ x: 0, z: -2.4, heading: 90 });
+      setOdometryTrack([[0, -2.4]]);
       setScanMessage(`Loaded ${ROOM_PRESETS.find((r) => r.id === roomId)?.name}. Heading aligned.`);
     },
     [cancelOperations]
@@ -234,10 +297,11 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   // Forward 180° Outward Planar Raycaster with S2 DTOF & ST3215 Kinematics
   const _capturePlane = useCallback(
     (angleDeg: number, customRays = raysPerPlane, pose = roverPoseRef.current) => {
-      // In raw odometry mode, simulate accumulated Mecanum wheel slip
+      // In raw odometry mode, simulate accumulated Mecanum wheel slip with surface friction/slip factors
+      const terr = getRoomTerrainAt(currentRoom, pose.x, pose.z);
       const effectivePose =
         registrationMode === "raw_odometry" && odometryTrack.length > 3
-          ? addMecanumOdometryDrift(pose, odometryTrack.length * 0.05, pose.heading).estimatedPose
+          ? addMecanumOdometryDrift(pose, odometryTrack.length * 0.05, pose.heading, 42, terr.slipMultiplier).estimatedPose
           : pose;
 
       const fovStart = scanAperture === 360 ? 0 : -scanAperture / 2;
@@ -283,17 +347,11 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         } else {
           setIcpResidual(0.004);
         }
-        setPoints((prev) => {
-          const fresh = filterDuplicateVoxelPoints(slice, prev, 0.025);
-          return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-        });
+        commitVoxelPoints(slice);
         setLatestPoints(slice);
       } else {
         setIcpResidual(null);
-        setPoints((prev) => {
-          const fresh = filterDuplicateVoxelPoints(slice, prev, 0.025);
-          return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-        });
+        commitVoxelPoints(slice);
         setLatestPoints(slice);
       }
 
@@ -336,10 +394,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         allSlices.push(...slice);
       }
 
-      setPoints((prev) => {
-        const fresh = filterDuplicateVoxelPoints(allSlices, prev, 0.025);
-        return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-      });
+      commitVoxelPoints(allSlices);
       setLatestPoints(allSlices);
       return allSlices.length;
     },
@@ -377,9 +432,17 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
 
       if (reducedMotion) {
         const dest = waypoints[waypoints.length - 1];
-        const arrived: RoverPose = { x: dest[0], z: dest[1], heading: finalHeading };
+        const safeDest = resolveRoverCollision(
+          dest[0],
+          dest[1],
+          0.22,
+          currentRoom.obstacles,
+          currentRoom.width,
+          currentRoom.depth
+        );
+        const arrived: RoverPose = { x: safeDest.x, z: safeDest.z, heading: finalHeading };
         setRoverPose(arrived);
-        setOdometryTrack((prev) => [...prev, [dest[0], dest[1]]]);
+        setOdometryTrack((prev) => [...prev, [safeDest.x, safeDest.z]]);
         setWheelRPMs([0, 0, 0, 0]);
         setNavPath([]);
         setOperationState("settle");
@@ -444,12 +507,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             const localVy = (sign * 0.16) / 0.82;
             try {
               const omegas = wheelSpeeds(localVx, localVy, 0, 0.05, 0.17, 0.14);
-              activeRPMs = [
-                Math.round((omegas[0] * 60) / (2 * Math.PI)),
-                Math.round((omegas[1] * 60) / (2 * Math.PI)),
-                Math.round((omegas[2] * 60) / (2 * Math.PI)),
-                Math.round((omegas[3] * 60) / (2 * Math.PI))
-              ];
+              activeRPMs = wheelSpeedsToRPMs(omegas);
             } catch {
               activeRPMs = pt.wheelRPMs;
             }
@@ -464,11 +522,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             // 1. If near goal, cleanly settle at current safe position
             if (distToGoal < 0.28) {
               if (inMotionBuffer.length > 0) {
-                const batch = inMotionBuffer.splice(0, inMotionBuffer.length);
-                setPoints((prev) => {
-                  const fresh = filterDuplicateVoxelPoints(batch, prev, 0.025);
-                  return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-                });
+                commitVoxelPoints(inMotionBuffer.splice(0, inMotionBuffer.length));
               }
               setWheelRPMs([0, 0, 0, 0]);
               setOperationState("settle");
@@ -502,18 +556,62 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             currentX += accumulatedNudgeX;
             currentZ += accumulatedNudgeZ;
 
-            if (trajIndex === 0 || trajIndex % 12 === 0) {
-              setScanMessage(
-                `Theta* Pure Pursuit · 0° Level Interlock (2D Cartographer) · Path Scan (-16° Window): Ground Continuous · APF Clear: ${pt.clearance?.toFixed(2) ?? "—"}m`
-              );
+            const terr = getRoomTerrainAt(currentRoom, currentX, currentZ);
+            const attitude = getRoomAttitudeAt(currentRoom, currentX, currentZ, pt.headingDeg);
+
+            if (terr.type === "bumps") {
+              // Speed throttling effect for chassis shock mitigation
+              activeRPMs = activeRPMs.map((r) => Math.round(r * 0.55)) as [number, number, number, number];
+              if (trajIndex % 6 === 0) {
+                setScanMessage(
+                  `[TERRAIN DECISION: WASHBOARD BUMPS] Pitch vibration: ${attitude.pitchDeg > 0 ? "+" : ""}${attitude.pitchDeg}° · Shock mitigation · Velocity throttled to 0.14 m/s`
+                );
+              }
+            } else if (terr.type === "gravel") {
+              if (trajIndex % 6 === 0) {
+                setScanMessage(
+                  `[TERRAIN DECISION: GRAVEL BED] Low traction (μ=0.50) · 2.8x wheel slip · Micro-roughness: ±18mm · Slip compensation active`
+                );
+              }
+            } else if (terr.type === "ramp") {
+              if (trajIndex % 6 === 0) {
+                setScanMessage(
+                  `[TERRAIN DECISION: SLOPE] Pitch: ${attitude.pitchDeg > 0 ? "+" : ""}${attitude.pitchDeg}° · Active ST3215 servo leveling: ${(-attitude.pitchDeg).toFixed(1)}°`
+                );
+              }
+            } else if (terr.type === "curb") {
+              if (trajIndex % 6 === 0) {
+                setScanMessage(`[TERRAIN DECISION: CURB] 25mm threshold step cleared · Clearance nominal`);
+              }
+            } else if (terr.type === "platform") {
+              if (trajIndex % 6 === 0) {
+                setScanMessage(`[TERRAIN DECISION: PLATFORM] Elevated deck (+0.45m) · Edge guardrails monitored`);
+              }
+            } else {
+              if (trajIndex === 0 || trajIndex % 12 === 0) {
+                setScanMessage(
+                  `[TERRAIN DECISION: RUNWAY] Nominal traction (μ=0.95) · Theta* Pure Pursuit · Target velocity: 0.35 m/s · Clear: ${pt.clearance?.toFixed(2) ?? "—"}m`
+                );
+              }
             }
           }
 
-          // Strict boundary envelope enforcement: never allow chassis center past safe wall margin
-          const safeRoomW = currentRoom.width / 2 - 0.20;
-          const safeRoomD = currentRoom.depth / 2 - 0.20;
-          currentX = Math.max(-safeRoomW, Math.min(safeRoomW, currentX));
-          currentZ = Math.max(-safeRoomD, Math.min(safeRoomD, currentZ));
+          // Strict physical non-penetration collision resolution against arena perimeter walls and obstacles
+          const collision = resolveRoverCollision(
+            currentX,
+            currentZ,
+            0.22,
+            currentRoom.obstacles,
+            currentRoom.width,
+            currentRoom.depth
+          );
+          currentX = collision.x;
+          currentZ = collision.z;
+          if (collision.isColliding && trajIndex % 8 === 0) {
+            setScanMessage(
+              `[HITBOX CONTACT] Bumper contact with ${collision.contactObstacle ?? "obstacle"}. Non-penetration interlock active.`
+            );
+          }
 
           // Report live progress position for waypoint progression
           onProgress?.(currentX, currentZ);
@@ -573,11 +671,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
 
             // Stream continuous in-motion scan returns directly into the 3D map
             if (inMotionBuffer.length >= 240) {
-              const batch = inMotionBuffer.splice(0, inMotionBuffer.length);
-              setPoints((prev) => {
-                const fresh = filterDuplicateVoxelPoints(batch, prev, 0.025);
-                return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-              });
+              commitVoxelPoints(inMotionBuffer.splice(0, inMotionBuffer.length));
             }
           }
 
@@ -592,16 +686,20 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           navAnimFrameRef.current = requestAnimationFrame(stepKinematics);
         } else {
           if (inMotionBuffer.length > 0) {
-            const batch = inMotionBuffer.splice(0, inMotionBuffer.length);
-            setPoints((prev) => {
-              const fresh = filterDuplicateVoxelPoints(batch, prev, 0.025);
-              return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-            });
+            commitVoxelPoints(inMotionBuffer.splice(0, inMotionBuffer.length));
           }
           const dest = waypoints[waypoints.length - 1];
+          const safeDest = resolveRoverCollision(
+            dest[0] + accumulatedNudgeX,
+            dest[1] + accumulatedNudgeZ,
+            0.22,
+            currentRoom.obstacles,
+            currentRoom.width,
+            currentRoom.depth
+          );
           const arrived: RoverPose = {
-            x: Number((dest[0] + accumulatedNudgeX).toFixed(2)),
-            z: Number((dest[1] + accumulatedNudgeZ).toFixed(2)),
+            x: safeDest.x,
+            z: safeDest.z,
             heading: finalHeading
           };
           setRoverPose(arrived);
@@ -690,12 +788,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         // Batch commit to React point cloud state: commit periodically and on completion to eliminate intermediate render churn
         const batchStride = sweepPrecision === 10 ? 5 : Math.max(10, Math.round(totalSteps / 4));
         if (step % batchStride === 0 && sweepBufferRef.current.length > 0) {
-          const pending = sweepBufferRef.current;
+          commitVoxelPoints(sweepBufferRef.current);
           sweepBufferRef.current = [];
-          setPoints((prev) => {
-            const fresh = filterDuplicateVoxelPoints(pending, prev, 0.025);
-            return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-          });
         }
 
         if (step >= totalSteps) {
@@ -704,12 +798,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
             sweepTimerRef.current = null;
           }
           if (sweepBufferRef.current.length > 0) {
-            const pending = sweepBufferRef.current;
+            commitVoxelPoints(sweepBufferRef.current);
             sweepBufferRef.current = [];
-            setPoints((prev) => {
-              const fresh = filterDuplicateVoxelPoints(pending, prev, 0.025);
-              return fresh.length > 0 ? [...prev, ...fresh].slice(-MAX_POINT_CAPACITY) : prev;
-            });
           }
           setOperationState("gap_evaluate");
           setScanMessage(
@@ -851,19 +941,28 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
   }, [cancelOperations, executeSweepAtPose, roverPose]);
 
   const handleAddWaypoint = useCallback((pt: [number, number]) => {
-    // Clamp waypoint to safe interior so points near boundary lines don't breach walls
-    const safeW = currentRoom.width / 2 - 0.28;
-    const safeD = currentRoom.depth / 2 - 0.28;
-    const clampedPt: [number, number] = [
-      Number(Math.max(-safeW, Math.min(safeW, pt[0])).toFixed(2)),
-      Number(Math.max(-safeD, Math.min(safeD, pt[1])).toFixed(2))
-    ];
+    // Resolve waypoint against physical boundaries and obstacle hitboxes
+    const resolved = resolveRoverCollision(
+      pt[0],
+      pt[1],
+      0.28,
+      currentRoom.obstacles,
+      currentRoom.width,
+      currentRoom.depth
+    );
+    const clampedPt: [number, number] = [resolved.x, resolved.z];
     setWaypoints((prev) => {
       const next = [...prev, clampedPt];
-      setScanMessage(`Waypoint ${next.length} added at [${clampedPt[0]}m, ${clampedPt[1]}m]. Click 'Run Route' to survey.`);
+      if (resolved.isColliding) {
+        setScanMessage(
+          `[HITBOX SAFETY] Target inside ${resolved.contactObstacle ?? "obstacle"} boundary. Snapped to safe coordinate [${clampedPt[0]}m, ${clampedPt[1]}m].`
+        );
+      } else {
+        setScanMessage(`Waypoint ${next.length} added at [${clampedPt[0]}m, ${clampedPt[1]}m]. Click 'Run Route' to survey.`);
+      }
       return next;
     });
-  }, [currentRoom.width, currentRoom.depth]);
+  }, [currentRoom.width, currentRoom.depth, currentRoom.obstacles]);
 
   const handleClearWaypoints = useCallback(() => {
     setWaypoints([]);
@@ -911,12 +1010,15 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
           bestGapSummary = gaps[0].reason;
         }
 
+        const combinedObstacles = [...currentRoom.obstacles, ...perceivedObstacles];
         const leg = findNavPath(
           startPoint,
           targetPoint,
-          perceivedObstacles,
+          combinedObstacles,
           currentRoom.width,
-          currentRoom.depth
+          currentRoom.depth,
+          0.35,
+          currentRoom
         );
         for (let j = i === 0 ? 0 : 1; j < leg.length; j++) {
           fullConnectedPath.push(leg[j]);
@@ -1032,7 +1134,9 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         [recommendedVantage.x, recommendedVantage.z],
         currentRoom.obstacles,
         currentRoom.width,
-        currentRoom.depth
+        currentRoom.depth,
+        0.35,
+        currentRoom
       );
 
       navigateRoverAlongPath(path, recommendedVantage.heading, (arrivedPose) => {
@@ -1049,19 +1153,32 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     (targetPose: RoverPose) => {
       if (operationState === "transit" || operationState === "tilt_record") return;
 
-      // Extract perceived obstacles directly from the actual scanned point cloud
+      // Resolve clicked target to safe non-penetrating position outside all obstacle hitboxes
+      const resolved = resolveRoverCollision(
+        targetPose.x,
+        targetPose.z,
+        0.28,
+        currentRoom.obstacles,
+        currentRoom.width,
+        currentRoom.depth
+      );
+
+      // Merge physical arena obstacles with any dynamically perceived point cloud obstacles
       const { perceivedObstacles } = extractPerceptionsFromPoints(
         pointsRef.current,
         currentRoom.width,
         currentRoom.depth
       );
+      const combinedObstacles = [...currentRoom.obstacles, ...perceivedObstacles];
 
       const path = findNavPath(
         [roverPose.x, roverPose.z],
-        [targetPose.x, targetPose.z],
-        perceivedObstacles,
+        [resolved.x, resolved.z],
+        combinedObstacles,
         currentRoom.width,
-        currentRoom.depth
+        currentRoom.depth,
+        0.35,
+        currentRoom
       );
 
       navigateRoverAlongPath(path, targetPose.heading, (arrivedPose) => {
@@ -1082,8 +1199,8 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
     setWaypoints([]);
     setActiveWaypointIndex(-1);
     sweepStepRef.current = 0;
-    setRoverPose({ x: 0, z: 0, heading: 0 });
-    setOdometryTrack([[0, 0]]);
+    setRoverPose({ x: 0, z: -2.4, heading: 90 });
+    setOdometryTrack([[0, -2.4]]);
     setWheelRPMs([0, 0, 0, 0]);
     setIcpResidual(null);
     setScanMessage("Point cloud reset. Rover repositioned to start pose.");
@@ -1309,6 +1426,37 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
         {controlStrip}
 
         {/* ============================================================= */}
+        {/* 1.5. FEATURE ELEVATION & METROLOGY LEGEND                     */}
+        {/* ============================================================= */}
+        <div className={styles.legendStrip} role="region" aria-label="Feature elevation and metrology legend">
+          <span className="font-mono text-[9px] uppercase tracking-wider font-semibold opacity-70">Features:</span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendChip} style={{ backgroundColor: "#38bdf8" }} />
+            <span>Floor 0.0m</span>
+          </span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendChip} style={{ backgroundColor: "#f59e0b" }} />
+            <span>Bumps & Gravel +0.02m</span>
+          </span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendChip} style={{ backgroundColor: "#10b981" }} />
+            <span>Slopes 10°–15° (+0.05–0.40m)</span>
+          </span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendChip} style={{ backgroundColor: "#06b6d4" }} />
+            <span>Platform +0.45m</span>
+          </span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendChip} style={{ backgroundColor: "#a855f7" }} />
+            <span>Walls & Bench (+0.80–1.2m)</span>
+          </span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendChip} style={{ backgroundColor: "#ef4444" }} />
+            <span>Sump Void -0.40m</span>
+          </span>
+        </div>
+
+        {/* ============================================================= */}
         {/* 2. STAGE & SPECIFICATION SHEET                                */}
         {/* ============================================================= */}
         <div className={styles.canvasRow}>
@@ -1372,7 +1520,7 @@ export function ScanWorkbench({ onPointCount, cache }: ScanWorkbenchProps) {
                     type="button"
                     role="tab"
                     aria-selected={activeInspectorTab === tab.id}
-                    onClick={() => setActiveInspectorTab(tab.id)}
+                    onClick={() => handleSelectInspectorTab(tab.id)}
                     className={`font-mono text-[10px] pb-1 cursor-pointer transition-colors ${
                       activeInspectorTab === tab.id
                         ? "text-[var(--sonaris-studio-ink)] font-bold border-b-2 border-[var(--sonaris-red)]"

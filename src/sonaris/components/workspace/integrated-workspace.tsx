@@ -9,10 +9,54 @@ import { FabricationWorkbench } from "./fabrication-workbench";
 import styles from "./integrated-workspace.module.css";
 import Link from "next/link";
 
+type TabId = "architecture" | "power" | "scan" | "fabrication";
+const VALID_TABS: readonly TabId[] = ["architecture", "power", "scan", "fabrication"];
+const STORAGE_KEY = "sonaris:workspace-tab";
+
 export function IntegratedWorkspace() {
-  const [activeTab, setActiveTab] = useState<"architecture" | "power" | "scan" | "fabrication">(
-    "architecture"
-  );
+  const [activeTab, setActiveTab] = useState<TabId>("architecture");
+
+  // Restore memory point from URL hash or storage on mount
+  React.useEffect(() => {
+    try {
+      const hash = window.location.hash.replace("#", "") as TabId;
+      if (VALID_TABS.includes(hash)) {
+        setActiveTab(hash);
+        return;
+      }
+      const stored = (localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY)) as TabId;
+      if (stored && VALID_TABS.includes(stored)) {
+        setActiveTab(stored);
+      }
+    } catch {
+      // Storage access restricted
+    }
+  }, []);
+
+  // Listen for browser back/forward or hash changes
+  React.useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "") as TabId;
+      if (VALID_TABS.includes(hash)) {
+        setActiveTab(hash);
+      }
+    };
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
+  const handleTabChange = (nextTab: TabId) => {
+    setActiveTab(nextTab);
+    try {
+      localStorage.setItem(STORAGE_KEY, nextTab);
+      sessionStorage.setItem(STORAGE_KEY, nextTab);
+      if (window.location.hash !== `#${nextTab}`) {
+        window.history.replaceState(null, "", `#${nextTab}`);
+      }
+    } catch {
+      // Storage access restricted
+    }
+  };
 
   const reducedMotion = useReducedMotion();
   const scanCache = useRef<ScanSessionCache | null>(null);
@@ -72,7 +116,7 @@ export function IntegratedWorkspace() {
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabChange(tab.id)}
                     aria-pressed={isActive}
                     className={styles.segmentedBtn}
                   >

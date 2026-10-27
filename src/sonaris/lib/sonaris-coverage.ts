@@ -268,7 +268,8 @@ export function addMecanumOdometryDrift(
   actualPose: { x: number; z: number; heading: number },
   distanceTraveledM: number,
   turnAngleDeg: number,
-  seed = 42
+  seed = 42,
+  slipMultiplier = 1.0
 ): OdometryDriftResult {
   const h1 =
     ((Math.imul(Math.round(distanceTraveledM * 100) + seed, 1664525) + 1013904223) >>> 0) /
@@ -276,9 +277,9 @@ export function addMecanumOdometryDrift(
   const h2 =
     ((Math.imul(Math.round(turnAngleDeg * 10) + seed * 7, 22695477) + 1) >>> 0) / 4294967295;
 
-  const transSlip = distanceTraveledM * 0.035 * (h1 * 2 - 1);
-  const strafeSlip = distanceTraveledM * 0.045 * (h2 * 2 - 1);
-  const rotSlip = (turnAngleDeg / 90) * 0.8 * (h1 - 0.5);
+  const transSlip = distanceTraveledM * 0.035 * (h1 * 2 - 1) * slipMultiplier;
+  const strafeSlip = distanceTraveledM * 0.045 * (h2 * 2 - 1) * slipMultiplier;
+  const rotSlip = (turnAngleDeg / 90) * 0.8 * (h1 - 0.5) * slipMultiplier;
 
   const rad = (actualPose.heading * Math.PI) / 180;
   const dx = transSlip * Math.cos(rad) - strafeSlip * Math.sin(rad);
@@ -474,19 +475,47 @@ export interface CoverageReport {
   };
 }
 
+export type TerrainType =
+  | "ramp"
+  | "mezzanine"
+  | "platform"
+  | "gravel"
+  | "bumps"
+  | "curb"
+  | "hole"
+  | "void"
+  | "rough_patch";
+
 export interface TerrainFeature {
-  type: "ramp" | "mezzanine" | "rough_patch" | "curb";
+  type: TerrainType;
   x: number;
   z: number;
   width: number;
   depth: number;
-  height?: number;
-  direction?: "posX" | "negX" | "posZ" | "negZ";
-  roughnessM?: number; // e.g. 0.025m for micro-undulation
+  height?: number; // ramp rise, platform height, curb height, or void depth
+  direction?: "posX" | "negX" | "posZ" | "negZ"; // for ramps
+  roughnessM?: number; // micro-roughness amplitude (e.g. 0.018m for gravel)
+  bumpWavelengthM?: number; // e.g. 0.32m for washboard
+  bumpHeightM?: number; // e.g. 0.020m for washboard
+  frictionCoeff?: number;
+  slipMultiplier?: number;
+  costWeight?: number;
+  speedCapMs?: number;
+}
+
+export interface TerrainClassification {
+  type: TerrainType | "smooth";
+  name: string;
+  frictionCoeff: number;
+  slipMultiplier: number;
+  costWeight: number;
+  speedCapMs: number;
+  elevation: number;
+  description: string;
 }
 
 export interface RoomEnvironment {
-  id: "chamber" | string;
+  id: "proving_ground" | string;
   name: string;
   width: number;
   depth: number;
@@ -498,142 +527,130 @@ export interface RoomEnvironment {
 
 export const ROOM_PRESETS: RoomEnvironment[] = [
   {
-    id: "chamber",
-    name: "Open Ground Plane (7×6m)",
-    width: 7,
-    depth: 6,
-    height: 3,
-    description: "Unobstructed flat arena plane for baseline kinematics calibration, 2D Cartographer SLAM, and unrestricted Mecanum transit.",
-    obstacles: []
-  },
-  {
-    id: "mezzanine_ramp",
-    name: "Topographical Ramp & Mezzanine (8×7m)",
-    width: 8,
-    depth: 7,
-    height: 3.4,
-    description: "Multi-level metrology facility with a 10° inclined climbing ramp (+0.42m rise) leading to an elevated mezzanine floor. Validates chassis pitch compensation and ST3215 servo elevation leveling.",
-    terrainFeatures: [
-      { type: "ramp", x: -0.6, z: 0.2, width: 1.4, depth: 2.4, height: 0.42, direction: "posZ" },
-      { type: "mezzanine", x: -0.6, z: 2.1, width: 3.4, depth: 1.4, height: 0.42 }
-    ],
-    obstacles: [
-      // Inclined physical ramp wedge
-      { x: -0.6, z: 0.2, width: 1.4, depth: 2.4, height: 0.42, shape: "ramp", rampDirection: "posZ" },
-      // Elevated Mezzanine Deck block
-      { x: -0.6, z: 2.1, width: 3.4, depth: 1.4, height: 0.42, baseY: 0 },
-      // Mezzanine perimeter guardrails (left, right, back)
-      { x: -2.3, z: 2.1, width: 0.08, depth: 1.4, height: 0.70, baseY: 0.42 },
-      { x: 1.1, z: 2.1, width: 0.08, depth: 1.4, height: 0.70, baseY: 0.42 },
-      { x: -0.6, z: 2.8, width: 3.4, depth: 0.08, height: 0.70, baseY: 0.42 },
-      // Support pillars beneath mezzanine
-      { x: -2.0, z: 1.5, width: 0.20, depth: 0.20, height: 0.42, baseY: 0 },
-      { x: 0.8, z: 1.5, width: 0.20, depth: 0.20, height: 0.42, baseY: 0 },
-      // Lower floor calibration crate
-      { x: 1.8, z: -1.2, width: 0.70, depth: 0.70, height: 0.85, baseY: 0 }
-    ]
-  },
-  {
-    id: "curved_corridor",
-    name: "Curved S-Corridor & Pillars (8×7m)",
-    width: 8,
-    depth: 7,
-    height: 3.2,
-    description: "Sinuous architectural layout with massive cylindrical columns (r=0.35m–0.45m), serpentine chicane bends, and blind corners testing Theta* curved contour navigation and 2D ICP contour matching.",
-    obstacles: [
-      // 4 Massive Cylindrical Columns
-      { x: -1.6, z: -0.8, width: 0.7, depth: 0.7, height: 3.0, shape: "cylinder", radius: 0.35 },
-      { x: 1.5, z: 0.8, width: 0.9, depth: 0.9, height: 3.0, shape: "cylinder", radius: 0.45 },
-      { x: -1.2, z: 1.6, width: 0.7, depth: 0.7, height: 3.0, shape: "cylinder", radius: 0.35 },
-      { x: 1.8, z: -1.4, width: 0.7, depth: 0.7, height: 3.0, shape: "cylinder", radius: 0.35 },
-      // Slanted / Angled Partition Walls creating the chicane
-      { x: -0.2, z: 0.2, width: 0.20, depth: 1.6, height: 2.4, baseY: 0 },
-      { x: -0.2, z: -1.6, width: 1.4, depth: 0.20, height: 2.4, baseY: 0 },
-      // Concave alcove partition
-      { x: 2.4, z: 1.8, width: 0.20, depth: 1.2, height: 2.0, baseY: 0 }
-    ]
-  },
-  {
-    id: "rough_yard",
-    name: "Rough Yard & Berms (8×6m)",
-    width: 8,
-    depth: 6,
+    id: "proving_ground",
+    name: "Proving Ground",
+    width: 10,
+    depth: 8,
     height: 3.0,
-    description: "Industrial yard terrain with micro-undulated gravel patch (±25mm), sloped earth berms, stepped curbs, and negative drainage trench testing terrain height filtering.",
+    description: "Robotics arena with slope, gravel, washboard bumps, raised platform, and curb step.",
     terrainFeatures: [
-      { type: "rough_patch", x: -0.8, z: -0.6, width: 2.6, depth: 2.4, roughnessM: 0.025 },
-      { type: "curb", x: 1.0, z: -0.5, width: 0.15, depth: 2.8, height: 0.045 }
+      // Central Climb Slope (15.0° incline, rise 0.45m over 1.68m run in +Z)
+      {
+        type: "ramp",
+        x: 0.0,
+        z: 0.60,
+        width: 1.40,
+        depth: 1.68,
+        height: 0.45,
+        direction: "posZ",
+        frictionCoeff: 0.85,
+        slipMultiplier: 1.2,
+        costWeight: 1.5,
+        speedCapMs: 0.22
+      },
+      // North Raised Platform (+0.45m flat elevation)
+      {
+        type: "platform",
+        x: -0.60,
+        z: 2.44,
+        width: 3.20,
+        depth: 2.00,
+        height: 0.45,
+        frictionCoeff: 0.95,
+        slipMultiplier: 1.0,
+        costWeight: 1.1,
+        speedCapMs: 0.30
+      },
+      // Northwest Descent Slope (10.0° decline, drop 0.45m over 2.55m run in -X)
+      {
+        type: "ramp",
+        x: -3.475,
+        z: 2.44,
+        width: 2.55,
+        depth: 1.40,
+        height: 0.45,
+        direction: "posX",
+        frictionCoeff: 0.85,
+        slipMultiplier: 1.2,
+        costWeight: 1.5,
+        speedCapMs: 0.22
+      },
+      // Threshold Curb (25mm step bump)
+      {
+        type: "curb",
+        x: 0.0,
+        z: -0.60,
+        width: 1.40,
+        depth: 0.15,
+        height: 0.025,
+        frictionCoeff: 0.90,
+        slipMultiplier: 1.1,
+        costWeight: 1.3,
+        speedCapMs: 0.15
+      },
+      // West Washboard Bumps Course (corrugated transverse ridges, 20mm height, 0.32m wavelength)
+      {
+        type: "bumps",
+        x: -2.80,
+        z: -0.60,
+        width: 2.00,
+        depth: 2.24,
+        bumpHeightM: 0.020,
+        bumpWavelengthM: 0.32,
+        frictionCoeff: 0.75,
+        slipMultiplier: 1.4,
+        costWeight: 2.0,
+        speedCapMs: 0.14
+      },
+      // East Gravel Bed (loose stone aggregate bed with micro-undulation and high wheel slip)
+      {
+        type: "gravel",
+        x: 3.50,
+        z: 0.50,
+        width: 2.20,
+        depth: 3.20,
+        roughnessM: 0.018,
+        frictionCoeff: 0.50,
+        slipMultiplier: 2.8,
+        costWeight: 2.4,
+        speedCapMs: 0.20
+      },
+      // Southeast Sump Void (sub-floor inspection pit / drop-off)
+      {
+        type: "hole",
+        x: 2.80,
+        z: -2.50,
+        width: 1.40,
+        depth: 1.20,
+        height: 0.40,
+        frictionCoeff: 0.0,
+        slipMultiplier: 99.0,
+        costWeight: 999.0,
+        speedCapMs: 0.0
+      }
     ],
     obstacles: [
-      // Negative drainage trench
-      { x: 1.6, z: 0.6, width: 0.60, depth: 2.2, height: 0, isHole: true },
-      // Stepped curb edge
-      { x: 1.0, z: -0.5, width: 0.15, depth: 2.8, height: 0.045, baseY: 0 },
-      // Sloped earth berm ramp
-      { x: -2.4, z: 1.2, width: 1.2, depth: 1.8, height: 0.35, shape: "ramp", rampDirection: "negX" },
-      // Industrial equipment crate
-      { x: 0.2, z: 1.4, width: 0.75, depth: 0.75, height: 0.90, baseY: 0 }
-    ]
-  },
-  {
-    id: "holes",
-    name: "Floor Voids & Drop-Offs (7×6m)",
-    width: 7,
-    depth: 6,
-    height: 3,
-    description: "Chamber featuring negative floor pits and drop-off trenches for testing downward tilt (-16° to -25°) edge-detection and reactive holonomic strafes.",
-    obstacles: [
-      { x: 0, z: 0.6, width: 0.8, depth: 0.8, height: 0, isHole: true },
-      { x: -1.6, z: -0.8, width: 0.9, depth: 0.7, height: 0, isHole: true },
-      { x: 1.5, z: 0.2, width: 0.7, depth: 1.0, height: 0, isHole: true },
-      { x: -1.2, z: 1.4, width: 0.6, depth: 0.6, height: 0, isHole: true }
-    ]
-  },
-  {
-    id: "hangs",
-    name: "Clearance Hangs (Low & High)",
-    width: 8,
-    depth: 6,
-    height: 3.2,
-    description: "Chamber with low-hanging barriers requiring chassis detours and high-hanging overhead trusses that allow safe rover underpass while mapped overhead by upward LiDAR sweep.",
-    obstacles: [
-      // Low-hanging barrier (base at 0.36m, blocks 0.50m mast height)
-      { x: -0.8, z: 0.5, width: 1.6, depth: 0.35, height: 0.30, baseY: 0.36 },
-      // Low-hanging duct (base at 0.34m)
-      { x: 1.4, z: -0.7, width: 1.2, depth: 0.40, height: 0.32, baseY: 0.34 },
-      // High-hanging overhead truss (base at 1.75m, rover drives safely underneath)
-      { x: 0, z: -0.2, width: 3.4, depth: 0.50, height: 0.45, baseY: 1.75 },
-      // High-hanging fixture
-      { x: -1.8, z: 1.3, width: 0.8, depth: 0.8, height: 0.35, baseY: 2.10 },
-      // Structural floor pillar
-      { x: 2.2, z: 1.0, width: 0.5, depth: 0.5, height: 2.8, baseY: 0 }
-    ]
-  },
-  {
-    id: "shelves",
-    name: "Warehouse Shelving & Racks",
-    width: 8,
-    depth: 7,
-    height: 3.2,
-    description: "Industrial warehouse corridor with multi-tier storage racks, lower pallet decks, and elevated shelving tiers scanned in full 3D from the tilting S2 LiDAR.",
-    obstacles: [
-      // Rack 1 (Left Aisle) - uprights and 3 shelf decks
-      { x: -1.8, z: 0.8, width: 0.12, depth: 0.8, height: 2.4, baseY: 0 },
-      { x: -0.8, z: 0.8, width: 0.12, depth: 0.8, height: 2.4, baseY: 0 },
-      { x: -1.3, z: 0.8, width: 1.15, depth: 0.75, height: 0.08, baseY: 0.35 },
-      { x: -1.3, z: 0.8, width: 1.15, depth: 0.75, height: 0.08, baseY: 1.05 },
-      { x: -1.3, z: 0.8, width: 1.15, depth: 0.75, height: 0.08, baseY: 1.75 },
-
-      // Rack 2 (Right Aisle) - uprights and 3 shelf decks
-      { x: 1.0, z: -0.8, width: 0.12, depth: 0.8, height: 2.4, baseY: 0 },
-      { x: 2.0, z: -0.8, width: 0.12, depth: 0.8, height: 2.4, baseY: 0 },
-      { x: 1.5, z: -0.8, width: 1.15, depth: 0.75, height: 0.08, baseY: 0.35 },
-      { x: 1.5, z: -0.8, width: 1.15, depth: 0.75, height: 0.08, baseY: 1.05 },
-      { x: 1.5, z: -0.8, width: 1.15, depth: 0.75, height: 0.08, baseY: 1.75 },
-
-      // Floor pallet / cargo crates
-      { x: -1.3, z: -1.3, width: 0.75, depth: 0.75, height: 0.55, baseY: 0 },
-      { x: 1.5, z: 1.2, width: 0.70, depth: 0.70, height: 0.65, baseY: 0 }
+      // 1. Primary Climb Slope Wedge (15° Incline)
+      { x: 0.0, z: 0.60, width: 1.40, depth: 1.68, height: 0.45, shape: "ramp", rampDirection: "posZ", baseY: 0, category: "ramp", name: "Climb Slope (15°)" },
+      // 2. Secondary Descent Slope Wedge (10° Decline)
+      { x: -3.475, z: 2.44, width: 2.55, depth: 1.40, height: 0.45, shape: "ramp", rampDirection: "posX", baseY: 0, category: "ramp", name: "Descent Slope (10°)" },
+      // 3. Platform Base Block (+0.45m Deck)
+      { x: -0.60, z: 2.44, width: 3.20, depth: 2.00, height: 0.45, baseY: 0, category: "platform", name: "Raised Platform (+0.45m)" },
+      // 4. Platform Safety Guardrails (0.70m high on top of 0.45m deck)
+      { x: -0.60, z: 3.40, width: 3.20, depth: 0.08, height: 0.70, baseY: 0.45, category: "guardrail", name: "North Guardrail" },
+      { x: 0.96, z: 2.44, width: 0.08, depth: 2.00, height: 0.70, baseY: 0.45, category: "guardrail", name: "East Guardrail" },
+      { x: -1.45, z: 1.48, width: 1.50, depth: 0.08, height: 0.70, baseY: 0.45, category: "guardrail", name: "South Guardrail" },
+      // 5. Cylindrical Support Columns (Ø0.40m, r=0.20m)
+      { x: 1.80, z: 2.00, width: 0.40, depth: 0.40, height: 3.0, shape: "cylinder", radius: 0.20, baseY: 0, category: "column", name: "Support Column A" },
+      { x: -2.80, z: 1.30, width: 0.40, depth: 0.40, height: 3.0, shape: "cylinder", radius: 0.20, baseY: 0, category: "column", name: "Support Column B" },
+      // 6. Runway Safety Wall Partition
+      { x: 0.90, z: -1.60, width: 0.18, depth: 1.80, height: 2.40, baseY: 0, category: "wall", name: "Runway Safety Wall" },
+      // 7. Southeast Metrology Bench
+      { x: 3.80, z: -2.60, width: 0.80, depth: 0.80, height: 0.90, baseY: 0, category: "bench", name: "Metrology Bench" },
+      // 8. Threshold Curb Step (25mm)
+      { x: 0.0, z: -0.60, width: 1.40, depth: 0.15, height: 0.025, baseY: 0, category: "curb", name: "Threshold Curb (25mm)" },
+      // 9. Sump Void Pit (Drop-off)
+      { x: 2.80, z: -2.50, width: 1.40, depth: 1.20, height: 0, isHole: true, category: "void", name: "Sump Void Pit (-0.40m)" }
     ]
   }
 ];
@@ -653,7 +670,7 @@ export function getRoomElevationAt(room: RoomEnvironment, x: number, z: number):
     if (Math.abs(x - feat.x) <= halfW && Math.abs(z - feat.z) <= halfD) {
       if (feat.type === "ramp") {
         const dir = feat.direction ?? "posZ";
-        const h = feat.height ?? 0.42;
+        const h = feat.height ?? 0.45;
         if (dir === "posZ") {
           const t = Math.max(0, Math.min(1, (z - (feat.z - halfD)) / feat.depth));
           elevation = Math.max(elevation, t * h);
@@ -667,18 +684,145 @@ export function getRoomElevationAt(room: RoomEnvironment, x: number, z: number):
           const t = Math.max(0, Math.min(1, ((feat.x + halfW) - x) / feat.width));
           elevation = Math.max(elevation, t * h);
         }
-      } else if (feat.type === "mezzanine") {
-        elevation = Math.max(elevation, feat.height ?? 0.42);
+      } else if (feat.type === "mezzanine" || feat.type === "platform") {
+        elevation = Math.max(elevation, feat.height ?? 0.45);
+      } else if (feat.type === "curb") {
+        elevation = Math.max(elevation, feat.height ?? 0.025);
+      } else if (feat.type === "bumps") {
+        const bHeight = feat.bumpHeightM ?? 0.020;
+        const bWave = feat.bumpWavelengthM ?? 0.32;
+        const relZ = z - (feat.z - halfD);
+        const wave = Math.sin((Math.PI * relZ) / bWave);
+        const bumpY = bHeight * wave * wave;
+        elevation = Math.max(elevation, bumpY);
+      } else if (feat.type === "gravel") {
+        const r = feat.roughnessM ?? 0.018;
+        const micro = r * (Math.sin(15 * x) * Math.cos(17 * z) + 0.35 * Math.sin(31 * x) * Math.cos(22 * z));
+        elevation += micro;
       } else if (feat.type === "rough_patch") {
         const roughness = feat.roughnessM ?? 0.025;
         const micro = roughness * Math.sin(x * 12.0) * Math.cos(z * 15.0);
         elevation += micro;
-      } else if (feat.type === "curb") {
-        elevation = Math.max(elevation, feat.height ?? 0.045);
+      } else if (feat.type === "hole" || feat.type === "void") {
+        elevation = -(feat.height ?? 0.40);
       }
     }
   }
   return Number(elevation.toFixed(3));
+}
+
+/**
+ * Classifies the active terrain sector at (x, z) along with surface physical properties,
+ * traction friction coefficient, wheel slip multiplier, and path cost weight.
+ */
+export function getRoomTerrainAt(
+  room: RoomEnvironment,
+  x: number,
+  z: number
+): TerrainClassification {
+  if (!room.terrainFeatures || room.terrainFeatures.length === 0) {
+    return {
+      type: "smooth",
+      name: "Runway",
+      frictionCoeff: 0.95,
+      slipMultiplier: 1.0,
+      costWeight: 1.0,
+      speedCapMs: 0.35,
+      elevation: 0,
+      description: "Smooth concrete floor with nominal traction."
+    };
+  }
+
+  for (const feat of room.terrainFeatures) {
+    const halfW = feat.width / 2;
+    const halfD = feat.depth / 2;
+    if (Math.abs(x - feat.x) <= halfW && Math.abs(z - feat.z) <= halfD) {
+      const elev = getRoomElevationAt(room, x, z);
+      if (feat.type === "hole" || feat.type === "void") {
+        return {
+          type: "void",
+          name: "Sump Void",
+          frictionCoeff: 0.0,
+          slipMultiplier: 99.0,
+          costWeight: 999.0,
+          speedCapMs: 0.0,
+          elevation: elev,
+          description: "Sub-floor drop-off pit; non-traversable fall hazard."
+        };
+      }
+      if (feat.type === "bumps") {
+        return {
+          type: "bumps",
+          name: "Washboard Bumps",
+          frictionCoeff: feat.frictionCoeff ?? 0.75,
+          slipMultiplier: feat.slipMultiplier ?? 1.4,
+          costWeight: feat.costWeight ?? 2.0,
+          speedCapMs: feat.speedCapMs ?? 0.14,
+          elevation: elev,
+          description: "Corrugated washboard bumps inducing pitch oscillation and vibration."
+        };
+      }
+      if (feat.type === "gravel") {
+        return {
+          type: "gravel",
+          name: "Gravel Bed",
+          frictionCoeff: feat.frictionCoeff ?? 0.50,
+          slipMultiplier: feat.slipMultiplier ?? 2.8,
+          costWeight: feat.costWeight ?? 2.4,
+          speedCapMs: feat.speedCapMs ?? 0.20,
+          elevation: elev,
+          description: "Loose stone aggregate bed with rolling resistance and high wheel slip."
+        };
+      }
+      if (feat.type === "ramp") {
+        return {
+          type: "ramp",
+          name: "Slope",
+          frictionCoeff: feat.frictionCoeff ?? 0.85,
+          slipMultiplier: feat.slipMultiplier ?? 1.2,
+          costWeight: feat.costWeight ?? 1.5,
+          speedCapMs: feat.speedCapMs ?? 0.22,
+          elevation: elev,
+          description: "Graded slope with sustained pitch gradient and gravity load."
+        };
+      }
+      if (feat.type === "mezzanine" || feat.type === "platform") {
+        return {
+          type: "platform",
+          name: "Raised Platform",
+          frictionCoeff: feat.frictionCoeff ?? 0.95,
+          slipMultiplier: feat.slipMultiplier ?? 1.0,
+          costWeight: feat.costWeight ?? 1.1,
+          speedCapMs: feat.speedCapMs ?? 0.30,
+          elevation: elev,
+          description: "Elevated flat deck (+0.45m) with safety edge drop-offs."
+        };
+      }
+      if (feat.type === "curb") {
+        return {
+          type: "curb",
+          name: "Threshold Curb",
+          frictionCoeff: feat.frictionCoeff ?? 0.90,
+          slipMultiplier: feat.slipMultiplier ?? 1.1,
+          costWeight: feat.costWeight ?? 1.3,
+          speedCapMs: feat.speedCapMs ?? 0.15,
+          elevation: elev,
+          description: "25mm step obstacle requiring ground clearance check."
+        };
+      }
+    }
+  }
+
+  return {
+    type: "smooth",
+    name: "Runway",
+    frictionCoeff: 0.95,
+    slipMultiplier: 1.0,
+    costWeight: 1.0,
+    speedCapMs: 0.35,
+    elevation: 0,
+    description: "Smooth concrete runway with nominal traction."
+  };
 }
 
 /**
@@ -718,6 +862,277 @@ export function getRoomAttitudeAt(
 
 function isPointInBox(x: number, z: number, bMinX: number, bMaxX: number, bMinZ: number, bMaxZ: number): boolean {
   return x >= bMinX && x <= bMaxX && z >= bMinZ && z <= bMaxZ;
+}
+
+/**
+ * 2D vector and angle primitives for robotic kinematics and navigation.
+ */
+export const Vec2 = {
+  dist: (x1: number, z1: number, x2: number, z2: number): number => Math.hypot(x1 - x2, z1 - z2),
+  wrapDeg: (deg: number): number => ((deg + 540) % 360) - 180,
+  wrapRad: (rad: number): number => Math.atan2(Math.sin(rad), Math.cos(rad))
+};
+
+/**
+ * Converts Mecanum wheel angular speeds (rad/s) into motor RPMs.
+ */
+export function wheelSpeedsToRPMs(
+  omegas: [number, number, number, number]
+): [number, number, number, number] {
+  const k = 30 / Math.PI;
+  return [
+    Math.round(omegas[0] * k),
+    Math.round(omegas[1] * k),
+    Math.round(omegas[2] * k),
+    Math.round(omegas[3] * k)
+  ];
+}
+
+/**
+ * Evaluates 2D planar distance and repulsion normal from point (px, pz) to an obstacle.
+ * High-hanging objects (baseY >= 0.65m) and ramps are marked traversable.
+ */
+export function obstacleDistance2D(
+  o: ScanObstacle,
+  px: number,
+  pz: number,
+  roverElevation?: number
+): { distance: number; normalX: number; normalZ: number; isTraversable: boolean } {
+  // High-hanging obstacles (>= 0.65m) clear the rover chassis when on ground level
+  if ((o.baseY ?? 0) >= 0.65 && (roverElevation ?? 0) < 0.35) {
+    return { distance: Infinity, normalX: 0, normalZ: 0, isTraversable: true };
+  }
+  // Navigable ramps, curbs (<= 35mm rollable step), and shallow features are traversable
+  if (o.shape === "ramp" || o.category === "ramp" || o.category === "curb" || (o.height <= 0.035 && !o.isHole)) {
+    return { distance: Infinity, normalX: 0, normalZ: 0, isTraversable: true };
+  }
+  // Elevated platform deck: when the rover is elevated on or cresting the platform (>= 0.38m),
+  // the platform deck surface is the ground beneath the wheels!
+  if (o.category === "platform" && (roverElevation ?? 0) >= 0.38) {
+    return { distance: Infinity, normalX: 0, normalZ: 0, isTraversable: true };
+  }
+  if (o.shape === "cylinder") {
+    const r = o.radius ?? o.width / 2;
+    const dx = px - o.x;
+    const dz = pz - o.z;
+    const d = Math.hypot(dx, dz);
+    const rawDist = Math.max(0.001, d - r);
+    return {
+      distance: rawDist,
+      normalX: d > 1e-4 ? dx / d : 1,
+      normalZ: d > 1e-4 ? dz / d : 0,
+      isTraversable: false
+    };
+  }
+  const hW = o.width / 2;
+  const hD = o.depth / 2;
+  const cx = Math.max(o.x - hW, Math.min(o.x + hW, px));
+  const cz = Math.max(o.z - hD, Math.min(o.z + hD, pz));
+  const dx = px - cx;
+  const dz = pz - cz;
+  const rawDist = Math.hypot(dx, dz);
+  return {
+    distance: rawDist,
+    normalX: rawDist > 1e-4 ? dx / rawDist : 1,
+    normalZ: rawDist > 1e-4 ? dz / rawDist : 0,
+    isTraversable: false
+  };
+}
+
+export interface CollisionResolutionResult {
+  x: number;
+  z: number;
+  isColliding: boolean;
+  contactNormal: [number, number] | null;
+  contactObstacle: string | null;
+  penetrationDepth: number;
+}
+
+/**
+ * Resolves 2D physical hitbox collision against arena perimeter walls and obstacles.
+ * Enforces hard non-penetration constraints so the rover cannot phase through solid matter.
+ */
+export function resolveRoverCollision(
+  px: number,
+  pz: number,
+  radius = 0.22,
+  obstacles: ScanObstacle[] = [],
+  roomW = 10,
+  roomD = 8
+): CollisionResolutionResult {
+  let resolvedX = px;
+  let resolvedZ = pz;
+  let isColliding = false;
+  let contactNormal: [number, number] | null = null;
+  let contactObstacle: string | null = null;
+  let maxPenetration = 0;
+
+  // 1. Boundary Perimeter Walls (10m x 8m arena)
+  const safeW = roomW / 2 - radius;
+  const safeD = roomD / 2 - radius;
+
+  if (resolvedX < -safeW) {
+    maxPenetration = Math.max(maxPenetration, -safeW - resolvedX);
+    resolvedX = -safeW;
+    isColliding = true;
+    contactNormal = [1, 0];
+    contactObstacle = "West Arena Wall";
+  } else if (resolvedX > safeW) {
+    maxPenetration = Math.max(maxPenetration, resolvedX - safeW);
+    resolvedX = safeW;
+    isColliding = true;
+    contactNormal = [-1, 0];
+    contactObstacle = "East Arena Wall";
+  }
+
+  if (resolvedZ < -safeD) {
+    maxPenetration = Math.max(maxPenetration, -safeD - resolvedZ);
+    resolvedZ = -safeD;
+    isColliding = true;
+    contactNormal = [0, 1];
+    contactObstacle = "North Arena Wall";
+  } else if (resolvedZ > safeD) {
+    maxPenetration = Math.max(maxPenetration, resolvedZ - safeD);
+    resolvedZ = safeD;
+    isColliding = true;
+    contactNormal = [0, -1];
+    contactObstacle = "South Arena Wall";
+  }
+
+  // 2. Solid Internal Obstacles (Columns, Walls, Benches, Guardrails, Pit Voids)
+  for (const o of obstacles) {
+    const baseY = o.baseY ?? 0;
+    if (baseY >= 0.65 || o.shape === "ramp") continue; // High hangings or navigable terrain slopes
+
+    if (o.shape === "cylinder") {
+      const colR = o.radius ?? o.width / 2;
+      const minDist = colR + radius;
+      const dx = resolvedX - o.x;
+      const dz = resolvedZ - o.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist < minDist) {
+        isColliding = true;
+        const pen = minDist - dist;
+        maxPenetration = Math.max(maxPenetration, pen);
+        const nx = dist > 1e-4 ? dx / dist : 1;
+        const nz = dist > 1e-4 ? dz / dist : 0;
+        resolvedX = Number((o.x + nx * minDist).toFixed(3));
+        resolvedZ = Number((o.z + nz * minDist).toFixed(3));
+        contactNormal = [nx, nz];
+        contactObstacle = "Cylindrical Column";
+      }
+    } else {
+      const halfW = o.width / 2;
+      const halfD = o.depth / 2;
+      const cx = Math.max(o.x - halfW, Math.min(o.x + halfW, resolvedX));
+      const cz = Math.max(o.z - halfD, Math.min(o.z + halfD, resolvedZ));
+      const dx = resolvedX - cx;
+      const dz = resolvedZ - cz;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist < radius) {
+        isColliding = true;
+        let nx = 0;
+        let nz = 0;
+        if (dist > 1e-4) {
+          nx = dx / dist;
+          nz = dz / dist;
+          const pen = radius - dist;
+          maxPenetration = Math.max(maxPenetration, pen);
+          resolvedX = Number((cx + nx * radius).toFixed(3));
+          resolvedZ = Number((cz + nz * radius).toFixed(3));
+        } else {
+          // Deep penetration inside box: eject to nearest face
+          const dLeft = resolvedX - (o.x - halfW);
+          const dRight = o.x + halfW - resolvedX;
+          const dTop = resolvedZ - (o.z - halfD);
+          const dBottom = o.z + halfD - resolvedZ;
+          const minEdge = Math.min(dLeft, dRight, dTop, dBottom);
+          if (minEdge === dLeft) {
+            nx = -1; nz = 0;
+            resolvedX = Number((o.x - halfW - radius).toFixed(3));
+          } else if (minEdge === dRight) {
+            nx = 1; nz = 0;
+            resolvedX = Number((o.x + halfW + radius).toFixed(3));
+          } else if (minEdge === dTop) {
+            nx = 0; nz = -1;
+            resolvedZ = Number((o.z - halfD - radius).toFixed(3));
+          } else {
+            nx = 0; nz = 1;
+            resolvedZ = Number((o.z + halfD + radius).toFixed(3));
+          }
+          maxPenetration = Math.max(maxPenetration, radius + minEdge);
+        }
+        contactNormal = [nx, nz];
+        contactObstacle = o.isHole ? "Sump Pit Void" : (o.height > 1.2 ? "Partition Wall" : "Structure");
+      }
+    }
+  }
+
+  // Re-clamp bounds after obstacle ejection
+  resolvedX = Math.max(-safeW, Math.min(safeW, resolvedX));
+  resolvedZ = Math.max(-safeD, Math.min(safeD, resolvedZ));
+
+  return {
+    x: Number(resolvedX.toFixed(3)),
+    z: Number(resolvedZ.toFixed(3)),
+    isColliding,
+    contactNormal,
+    contactObstacle,
+    penetrationDepth: Number(maxPenetration.toFixed(3))
+  };
+}
+
+/**
+ * Checks if a point is outside all obstacle hitboxes with safety clearance.
+ */
+export function isPointCollisionFree(
+  px: number,
+  pz: number,
+  radius = 0.22,
+  obstacles: ScanObstacle[] = [],
+  roomW = 10,
+  roomD = 8
+): boolean {
+  const safeW = roomW / 2 - radius;
+  const safeD = roomD / 2 - radius;
+  if (Math.abs(px) > safeW || Math.abs(pz) > safeD) return false;
+  for (const o of obstacles) {
+    if ((o.baseY ?? 0) >= 0.65 || o.shape === "ramp") continue;
+    const { distance, isTraversable } = obstacleDistance2D(o, px, pz);
+    if (!isTraversable && distance < radius) return false;
+  }
+  return true;
+}
+
+/**
+ * Checks if a line segment between (x1, z1) and (x2, z2) penetrates an obstacle boundary.
+ */
+export function obstacleIntersectsSegment(
+  o: ScanObstacle,
+  x1: number,
+  z1: number,
+  x2: number,
+  z2: number,
+  safetyMargin = 0.35
+): boolean {
+  if ((o.baseY ?? 0) >= 0.65 || o.shape === "ramp") return false;
+  if (o.shape === "cylinder") {
+    const r = (o.radius ?? o.width / 2) + safetyMargin;
+    const ldx = x2 - x1;
+    const ldz = z2 - z1;
+    const lLenSq = ldx * ldx + ldz * ldz;
+    const t = lLenSq > 1e-10 ? Math.max(0, Math.min(1, ((o.x - x1) * ldx + (o.z - z1) * ldz) / lLenSq)) : 0;
+    const px = x1 + t * ldx;
+    const pz = z1 + t * ldz;
+    return (px - o.x) ** 2 + (pz - o.z) ** 2 < r * r;
+  }
+  const minX = o.x - o.width / 2 - safetyMargin;
+  const maxX = o.x + o.width / 2 + safetyMargin;
+  const minZ = o.z - o.depth / 2 - safetyMargin;
+  const maxZ = o.z + o.depth / 2 + safetyMargin;
+  return lineIntersectsBox(x1, z1, x2, z2, minX, maxX, minZ, maxZ);
 }
 
 /**
@@ -784,25 +1199,8 @@ export function isLineClear(
   if (Math.abs(x1) > halfW || Math.abs(z1) > halfD || Math.abs(x2) > halfW || Math.abs(z2) > halfD) {
     return false;
   }
-  for (const o of obstacles) {
-    if ((o.baseY ?? 0) >= 0.65) continue; // High-hanging obstacles above 0.65m clear rover chassis
-    if (o.shape === "ramp") continue; // Navigable terrain incline
-    if (o.shape === "cylinder") {
-      const r = (o.radius ?? o.width / 2) + safetyMargin;
-      const ldx = x2 - x1, ldz = z2 - z1;
-      const lLenSq = ldx * ldx + ldz * ldz;
-      const t = lLenSq > 1e-10 ? Math.max(0, Math.min(1, ((o.x - x1) * ldx + (o.z - z1) * ldz) / lLenSq)) : 0;
-      const px = x1 + t * ldx, pz = z1 + t * ldz;
-      if ((px - o.x) ** 2 + (pz - o.z) ** 2 < r * r) {
-        return false;
-      }
-      continue;
-    }
-    const minX = o.x - o.width / 2 - safetyMargin;
-    const maxX = o.x + o.width / 2 + safetyMargin;
-    const minZ = o.z - o.depth / 2 - safetyMargin;
-    const maxZ = o.z + o.depth / 2 + safetyMargin;
-    if (lineIntersectsBox(x1, z1, x2, z2, minX, maxX, minZ, maxZ)) {
+  for (let i = 0; i < obstacles.length; i++) {
+    if (obstacleIntersectsSegment(obstacles[i], x1, z1, x2, z2, safetyMargin)) {
       return false;
     }
   }
@@ -811,17 +1209,38 @@ export function isLineClear(
 
 /**
  * Greedily smooths waypoints by checking line-of-sight shortcutting.
+ * Respects terrain decisions so string pulling does not cut through avoided high-cost terrain or voids.
  */
 export function smoothThetaPath(
   path: [number, number][],
   obstacles: ScanObstacle[],
   safetyMargin: number,
   roomW: number,
-  roomD: number
+  roomD: number,
+  room?: RoomEnvironment
 ): [number, number][] {
   if (path.length <= 2) return path;
   const smoothed: [number, number][] = [path[0]];
   let anchor = 0;
+
+  const isSegmentTerrainSafe = (x1: number, z1: number, x2: number, z2: number): boolean => {
+    if (!room) return true;
+    const maxCost = Math.max(
+      getRoomTerrainAt(room, x1, z1).costWeight,
+      getRoomTerrainAt(room, x2, z2).costWeight
+    );
+    const steps = 8;
+    for (let s = 1; s < steps; s++) {
+      const t = s / steps;
+      const px = x1 + t * (x2 - x1);
+      const pz = z1 + t * (z2 - z1);
+      const terr = getRoomTerrainAt(room, px, pz);
+      if (terr.type === "void" || terr.costWeight > maxCost * 1.5) {
+        return false;
+      }
+    }
+    return true;
+  };
 
   while (anchor < path.length - 1) {
     let candidate = path.length - 1;
@@ -836,6 +1255,12 @@ export function smoothThetaPath(
           safetyMargin,
           roomW,
           roomD
+        ) &&
+        isSegmentTerrainSafe(
+          path[anchor][0],
+          path[anchor][1],
+          path[candidate][0],
+          path[candidate][1]
         )
       ) {
         break;
@@ -860,7 +1285,8 @@ export function findThetaStarPath(
   obstacles: ScanObstacle[],
   roomW: number,
   roomD: number,
-  safetyMargin = 0.35
+  safetyMargin = 0.35,
+  room?: RoomEnvironment
 ): [number, number][] {
   const [sx, sz] = start;
   const [gx, gz] = goal;
@@ -872,8 +1298,12 @@ export function findThetaStarPath(
   const validGx = Math.max(-clampW, Math.min(clampW, gx));
   const validGz = Math.max(-clampD, Math.min(clampD, gz));
 
-  // Direct line-of-sight shortcut if straight path is completely clear
-  if (isLineClear(validSx, validSz, validGx, validGz, obstacles, safetyMargin, roomW, roomD)) {
+  // Direct line-of-sight shortcut if straight path is clear and not bypassing terrain cost evaluation
+  const directClear = isLineClear(validSx, validSz, validGx, validGz, obstacles, safetyMargin, roomW, roomD);
+  const startTerrain = room ? getRoomTerrainAt(room, validSx, validSz) : null;
+  const goalTerrain = room ? getRoomTerrainAt(room, validGx, validGz) : null;
+  const shouldEvaluateTerrain = room && startTerrain?.costWeight === 1.0 && goalTerrain?.costWeight === 1.0;
+  if (directClear && !shouldEvaluateTerrain) {
     return [[sx, sz], [validGx, validGz]];
   }
 
@@ -900,21 +1330,10 @@ export function findThetaStarPath(
 
   const isBlockedCoord = (x: number, z: number, margin = safetyMargin): boolean => {
     if (Math.abs(x) > halfW || Math.abs(z) > halfD) return true;
+    if (room && getRoomTerrainAt(room, x, z).type === "void") return true;
     for (let i = 0; i < activeObstacles.length; i++) {
-      const o = activeObstacles[i];
-      if (o.shape === "ramp") continue; // Navigable terrain incline
-      if (o.shape === "cylinder") {
-        const r = (o.radius ?? o.width / 2) + margin;
-        if ((x - o.x) ** 2 + (z - o.z) ** 2 <= r * r) {
-          return true;
-        }
-        continue;
-      }
-      const hW = o.width / 2 + margin;
-      const hD = o.depth / 2 + margin;
-      if (Math.abs(x - o.x) <= hW && Math.abs(z - o.z) <= hD) {
-        return true;
-      }
+      const { distance, isTraversable } = obstacleDistance2D(activeObstacles[i], x, z);
+      if (!isTraversable && distance <= margin) return true;
     }
     return false;
   };
@@ -1055,7 +1474,8 @@ export function findThetaStarPath(
         }
       }
 
-      const tentativeG = curG + moveCost * cellSize;
+      const terrainCost = room ? getRoomTerrainAt(room, toX(nc), toZ(nr)).costWeight : 1.0;
+      const tentativeG = curG + moveCost * cellSize * terrainCost;
       if (tentativeG < gScore[nIdx]) {
         gScore[nIdx] = tentativeG;
         parent[nIdx] = curIdx;
@@ -1084,11 +1504,12 @@ export function findThetaStarPath(
   densePath[densePath.length - 1] = [validGx, validGz];
 
   // Theta* String Pulling (Line-of-Sight Shortcut Smoothing)
-  return smoothThetaPath(densePath, obstacles, safetyMargin, roomW, roomD);
+  return smoothThetaPath(densePath, obstacles, safetyMargin, roomW, roomD, room);
 }
 
 /**
  * Calculates collision-free waypoints from start to target around obstacles via Theta*.
+ * When an optional room is provided, plans terrain decisions weighted by traversability costs.
  */
 export function findNavPath(
   start: [number, number],
@@ -1096,9 +1517,10 @@ export function findNavPath(
   obstacles: ScanObstacle[],
   roomW: number,
   roomD: number,
-  safetyMargin = 0.35
+  safetyMargin = 0.35,
+  room?: RoomEnvironment
 ): [number, number][] {
-  return findThetaStarPath(start, goal, obstacles, roomW, roomD, safetyMargin);
+  return findThetaStarPath(start, goal, obstacles, roomW, roomD, safetyMargin, room);
 }
 
 /**
@@ -1136,36 +1558,16 @@ export function computeAPF(
   let minClearance = Infinity;
 
   for (const o of obstacles) {
-    if ((o.baseY ?? 0) >= 0.65) continue; // High-hanging obstacles above 0.65m clear rover chassis
-    if (o.shape === "ramp") continue; // Navigable terrain incline
+    const { distance, normalX, normalZ, isTraversable } = obstacleDistance2D(o, px, pz);
+    if (isTraversable) continue;
 
-    let rawDist: number;
-    let distX = px - o.x;
-    let distZ = pz - o.z;
-
-    if (o.shape === "cylinder") {
-      const radius = o.radius ?? o.width / 2;
-      const centerDist = Math.hypot(distX, distZ);
-      rawDist = Math.max(0.001, centerDist - radius);
-    } else {
-      const halfWidth = o.width / 2;
-      const halfDepth = o.depth / 2;
-      const closestX = Math.max(o.x - halfWidth, Math.min(o.x + halfWidth, px));
-      const closestZ = Math.max(o.z - halfDepth, Math.min(o.z + halfDepth, pz));
-      distX = px - closestX;
-      distZ = pz - closestZ;
-      rawDist = Math.hypot(distX, distZ);
-    }
-
-    const clearance = Math.max(0.01, rawDist - rFootprint);
+    const clearance = Math.max(0.01, distance - rFootprint);
     minClearance = Math.min(minClearance, clearance);
 
     if (clearance < d0) {
       const forceMag = kRep * (1.0 / clearance - 1.0 / d0) * (1.0 / (clearance * clearance));
-      const nx = rawDist > 1e-4 ? distX / rawDist : 1.0;
-      const nz = rawDist > 1e-4 ? distZ / rawDist : 0.0;
-      repX += nx * Math.min(forceMag, 2.5);
-      repZ += nz * Math.min(forceMag, 2.5);
+      repX += normalX * Math.min(forceMag, 2.5);
+      repZ += normalZ * Math.min(forceMag, 2.5);
     }
   }
 
@@ -1268,12 +1670,7 @@ export function purePursuitStep(
   let wheelRPMs: [number, number, number, number] = [0, 0, 0, 0];
   try {
     const omegas = wheelSpeeds(localVx, localVy, yawRateRad, radius, halfLength, halfWidth);
-    wheelRPMs = [
-      Math.round((omegas[0] * 60) / (2 * Math.PI)),
-      Math.round((omegas[1] * 60) / (2 * Math.PI)),
-      Math.round((omegas[2] * 60) / (2 * Math.PI)),
-      Math.round((omegas[3] * 60) / (2 * Math.PI))
-    ];
+    wheelRPMs = wheelSpeedsToRPMs(omegas);
   } catch {
     wheelRPMs = [0, 0, 0, 0];
   }
@@ -1638,12 +2035,7 @@ export function generateMecanumTrajectory(
           let rpms: [number, number, number, number] = [0, 0, 0, 0];
           try {
             const omegas = wheelSpeeds(0, 0, yawRateRad, radius, halfLength, halfWidth);
-            rpms = [
-              Math.round((omegas[0] * 60) / (2 * Math.PI)),
-              Math.round((omegas[1] * 60) / (2 * Math.PI)),
-              Math.round((omegas[2] * 60) / (2 * Math.PI)),
-              Math.round((omegas[3] * 60) / (2 * Math.PI))
-            ];
+            rpms = wheelSpeedsToRPMs(omegas);
           } catch {
             rpms = [0, 0, 0, 0];
           }
@@ -1773,12 +2165,7 @@ export function generateMecanumTrajectory(
     let rpms: [number, number, number, number] = [0, 0, 0, 0];
     try {
       const omegas = wheelSpeeds(localVx, localVy, yawRateRad, radius, halfLength, halfWidth);
-      rpms = [
-        Math.round((omegas[0] * 60) / (2 * Math.PI)),
-        Math.round((omegas[1] * 60) / (2 * Math.PI)),
-        Math.round((omegas[2] * 60) / (2 * Math.PI)),
-        Math.round((omegas[3] * 60) / (2 * Math.PI))
-      ];
+      rpms = wheelSpeedsToRPMs(omegas);
     } catch {
       rpms = [0, 0, 0, 0];
     }
